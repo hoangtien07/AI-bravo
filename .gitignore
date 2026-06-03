@@ -1,0 +1,10 @@
+data/chroma/
+data/raw/
+data/audit_log.jsonl
+data/feedback.jsonl
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.checkpoints/
