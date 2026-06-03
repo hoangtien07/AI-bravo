@@ -54,9 +54,11 @@ class _ChromaStore:
         got = self._col.get(include=["documents", "metadatas"])
         return got["ids"], got["documents"], got["metadatas"]
 
-    def query(self, vector, k):
+    def query(self, vector, k, where=None):
+        # where (tùy chọn, OPT-IN): lọc metadata phía Chroma. None = không lọc (mặc định).
+        kw = {"where": where} if where else {}
         res = self._col.query(query_embeddings=[list(vector)], n_results=k,
-                              include=["documents", "metadatas", "distances"])
+                              include=["documents", "metadatas", "distances"], **kw)
         out = []
         for i, doc, meta, dist in zip(res["ids"][0], res["documents"][0],
                                       res["metadatas"][0], res["distances"][0]):
@@ -121,12 +123,20 @@ class _NumpyStore:
     def all(self):
         self._load(); return self._ids, self._docs, self._metas
 
-    def query(self, vector, k):
+    def query(self, vector, k, where=None):
         self._load()
         if not self._ids:
             return []
         q = np.asarray(vector, dtype="float32")
         q = q / (np.linalg.norm(q) or 1.0)
         sims = self._normalize(self._mat) @ q
-        order = np.argsort(-sims)[:k]
+        order = np.argsort(-sims)
+        # where (tùy chọn, OPT-IN): chỉ giữ item có metadata khớp đủ mọi cặp key/value trong dict.
+        # None = không lọc (mặc định) -> giữ nguyên hành vi cũ. So khớp bằng == (equality).
+        if where:
+            def _match(meta):
+                meta = meta or {}
+                return all(meta.get(key) == val for key, val in where.items())
+            order = [i for i in order if _match(self._metas[i])]
+        order = order[:k]
         return [(self._ids[i], self._docs[i], self._metas[i], float(sims[i])) for i in order]

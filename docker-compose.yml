@@ -1,0 +1,64 @@
+# docker-compose.yml — self-host "Trợ lý nghiệp vụ BRAVO" (RAG API).
+#
+# RÀNG BUỘC: KHÔNG nhúng key. Key/cấu hình đọc từ .env (env_file) — file .env KHÔNG commit
+# (đã .gitignore + .dockerignore). Production nên dùng secret của orchestrator (Docker Swarm
+# secret / Kubernetes Secret / vault) thay cho file .env — xem docs/deploy.md.
+#
+# Cách chạy nhanh:
+#   1) cp .env.example .env  &&  điền OPENAI_API_KEY / GEMINI_API_KEY
+#   2) ingest corpus 1 lần (sinh data/ — vector store + bm25):  python ingest.py
+#      (hoặc chạy trong container: docker compose run --rm api python ingest.py)
+#   3) docker compose up -d api
+#
+# Vector store mặc định ở máy build này = numpy (xem .env: VECTOR_STORE=numpy) — KHÔNG cần
+# service "chroma". Muốn dùng Chroma chạy SERVER (tách tiến trình, nhiều replica API dùng chung):
+# bật service "chroma" bên dưới + xem ghi chú đổi VECTOR_STORE/HttpClient.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bravo-rag-api:latest
+    # Đọc TOÀN BỘ biến môi trường (gồm key) từ .env — KHÔNG ghi key thẳng vào compose.
+    env_file:
+      - .env
+    # Persist dữ liệu runtime (vector store numpy/chroma-embedded + audit_log.jsonl + feedback)
+    # ra volume host. Corpus đã ingest sống ở đây, không nằm trong image.
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    # CHƯA có auth/rate-limit/TLS ở tầng app — KHÔNG expose thẳng ra Internet.
+    # Đặt sau reverse proxy (nginx/Caddy/Traefik) lo TLS + auth + rate-limit (xem checklist docs/deploy.md).
+
+  # ---------------------------------------------------------------------------
+  # (TUỲ CHỌN) Chroma chạy SERVER — chỉ bật khi muốn tách vector store khỏi tiến trình API.
+  # Kích hoạt:  docker compose --profile chroma up -d
+  #
+  # ĐỂ API DÙNG SERVER NÀY, cần 2 thay đổi (KHÔNG bật mặc định để không phá Phase-1):
+  #   (a) .env:   VECTOR_STORE=chroma
+  #               CHROMA_HOST=chroma         # (biến MỚI — pha Integrate thêm đọc trong config.py)
+  #               CHROMA_PORT=8000
+  #   (b) store.py (_ChromaStore.__init__): đổi PersistentClient -> HttpClient khi có CHROMA_HOST:
+  #          import os, chromadb
+  #          host = os.environ.get("CHROMA_HOST")
+  #          self._client = (chromadb.HttpClient(host=host, port=int(os.environ.get("CHROMA_PORT","8000")))
+  #                          if host else
+  #                          chromadb.PersistentClient(path=str(config.CHROMA_DIR)))
+  #       => embedded (mặc định, không đổi) khi không set CHROMA_HOST; server khi có.
+  #   (c) re-ingest vào server: docker compose run --rm api python ingest.py
+  #       (embedding chiều phải khớp COLLECTION; đổi embed provider => collection khác => re-ingest).
+  # ---------------------------------------------------------------------------
+  chroma:
+    image: chromadb/chroma:latest
+    profiles: ["chroma"]
+    volumes:
+      - chroma_data:/data
+    ports:
+      - "8001:8000"            # map 8001 host để không đụng cổng 8000 của api
+    restart: unless-stopped
+
+volumes:
+  chroma_data:

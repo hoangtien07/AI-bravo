@@ -100,14 +100,30 @@ def _hit(id_, sim, info):
             "chapter": m.get("chapter", ""), "url": m.get("url", "")}
 
 
-def retrieve(question: str, k=None):
+def _where(tenant_id=None, data_class=None):
+    """Seam đa khách OPT-IN: build dict lọc metadata. Mặc định cả hai None -> trả None
+    (không lọc) -> hành vi y hệt cũ. Chỉ thêm key khi tham số được truyền tường minh."""
+    w = {}
+    if tenant_id is not None:
+        w["tenant_id"] = tenant_id
+    if data_class is not None:
+        w["data_class"] = data_class
+    return w or None
+
+
+def retrieve(question: str, k=None, tenant_id=None, data_class=None):
     """Hybrid: vector (Chroma cosine) + BM25, hợp nhất bằng RRF, (tùy chọn) rerank.
-    Trả về (hits[:k], max_vec_sim). max_vec_sim dùng cho rào chắn từ chối (2)."""
+    Trả về (hits[:k], max_vec_sim). max_vec_sim dùng cho rào chắn từ chối (2).
+
+    tenant_id/data_class (tùy chọn, OPT-IN đa khách): nếu truyền thì lọc store theo metadata.
+    Mặc định None -> không lọc -> hành vi y hệt cũ (lưu ý: lọc chỉ áp lên nhánh vector;
+    BM25 không lọc, nên dùng kèm khi đã phân tách collection theo tenant)."""
     k = k or config.TOP_K
     cand = max(k, config.RETRIEVE_CANDIDATES)
+    where = _where(tenant_id, data_class)
 
     qemb = provider.embed_texts([question], task="query")[0]
-    res = _store().query(qemb, cand)                      # [(id, doc, meta, sim)] sim giảm dần
+    res = _store().query(qemb, cand, where=where)         # [(id, doc, meta, sim)] sim giảm dần
     v_ids = [r[0] for r in res]
     vec_sim = {r[0]: round(r[3], 3) for r in res}
     info = {r[0]: (r[1], r[2]) for r in res}
@@ -181,7 +197,9 @@ def _audit(question, sources, route, refused=False, pii=None, blocked=None):
         pass
 
 
-def ask(question: str, k=None, min_sim=None):
+def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None):
+    # tenant_id/data_class (tùy chọn, OPT-IN): chuyển thẳng xuống retrieve() để lọc store.
+    # Mặc định None -> không lọc -> hành vi y hệt cũ. KHÔNG đụng 6 rào chắn.
     min_sim = config.MIN_SIM if min_sim is None else min_sim
     route = provider.route_label()
 
@@ -193,7 +211,7 @@ def ask(question: str, k=None, min_sim=None):
                 "refused": True, "blocked": "pii", "pii": pii, "route": route}
 
     try:
-        hits, max_vec = retrieve(question, k)
+        hits, max_vec = retrieve(question, k, tenant_id=tenant_id, data_class=data_class)
     except Exception as e:
         return {"answer": f"[Lỗi truy hồi] {e}. Đã ingest chưa? "
                           f"(collection '{config.COLLECTION}')",

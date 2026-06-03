@@ -24,6 +24,11 @@ Câu hỏi → [rào chắn PII] → embed (provider) → truy hồi HYBRID (BM2
 | `app.py` | Giao diện chat Streamlit (nhãn động theo route + feedback 👍/👎) |
 | `eval.py` + `eval_questions.yaml` | 53 câu bám corpus thật; đo **đúng nội dung** (keyword) + rào chắn |
 | `crawl_bravo10_help.py` | Crawl SPA help.bravo.com.vn (Playwright) → `data/raw/bravo10_help.jsonl` (651 trang) |
+| `api.py` | **Cổng HTTP FastAPI** bọc `rag.ask` (lớp mỏng, giữ nguyên 6 rào chắn) — xem §10 |
+| `eval_judge.py` | **LLM-as-judge**: chấm `faithfulness` + `answer_relevancy` (thang 1–5) ngoài keyword |
+| `analytics.py` | **Báo cáo coverage/observability** từ `audit_log.jsonl`+`feedback.jsonl` (offline, KHÔNG gọi LLM) |
+| `suggest.py` | **Câu hỏi liên quan** (follow-up) grounded trên chunk truy hồi, tái dùng rào chắn PII/ngưỡng |
+| `Dockerfile` · `docker-compose.yml` · `docs/deploy.md` | Đóng gói + triển khai (chạy `uvicorn api:app`) |
 
 ---
 
@@ -98,6 +103,26 @@ Tài liệu help **công khai** → gửi qua cloud về cơ bản không vi ph�
 | Đổi embedder mà kết quả lạ | Phải `python ingest.py --reset` (store khoá theo số chiều embedding) |
 
 ---
+
+## 10. API HTTP + công cụ vận hành (mới)
+
+```bash
+uvicorn api:app                          # http://127.0.0.1:8000 — tài liệu /docs
+python eval_judge.py --limit 6           # LLM-as-judge (tốn token): faithfulness + answer_relevancy
+python analytics.py                      # báo cáo coverage từ log (offline, miễn phí)
+python suggest.py "Khai báo khấu hao TSCĐ ở đâu?"   # gợi ý câu hỏi liên quan
+```
+
+**Endpoint** (lớp mỏng quanh `rag.ask`, KHÔNG đổi 6 rào chắn):
+
+| Method | Path | Body | Trả về |
+|---|---|---|---|
+| GET | `/healthz` (và `/health`) | — | `{status, provider, embed, store, route}` — probe nhẹ, **không gọi LLM** (0 token) |
+| POST | `/ask` | `{question, k?, min_sim?, tenant_id?}` | **nguyên dict** `rag.ask`: `{answer, sources, hits, refused, route, max_sim}` |
+| POST | `/feedback` | `{question, rating}` | `{ok}` — ghi `data/feedback.jsonl` (câu hỏi đã redact PII) |
+
+> `tenant_id` được chấp nhận để tương thích phía gọi nhưng **chưa** dùng (Phase-1 đơn tenant `bravo_internal`); isolation đa tenant ở phase sau (đổi `rag`/`store`).
+> Docker: `docker compose up` (đọc key từ `.env`, mount `./data`). Chi tiết biến môi trường + cấp key an toàn: `docs/deploy.md`.
 
 ## 9. Liên hệ kế hoạch & dữ liệu
 - Kế hoạch tái cấu trúc đầy đủ (phase 1→3, scope, chi phí, pháp lý): `C:\Users\<user>\.claude\plans\...`.

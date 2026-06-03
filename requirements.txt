@@ -10,6 +10,11 @@ google-genai>=0.3        # Gemini (cloud) — mặc định
 openai>=1.40             # OpenAI (cloud) — tuỳ chọn
 ollama>=0.3.0            # self-host (fallback / đối chứng chủ quyền dữ liệu)
 
+# --- API HTTP (api.py: cổng FastAPI bọc rag.ask, dùng cho tích hợp/deploy) ---
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pydantic>=2.0            # fastapi kéo theo, liệt kê tường minh cho rõ ràng
+
 # --- UI + crawl ---
 streamlit>=1.36
 requests>=2.31

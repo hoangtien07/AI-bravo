@@ -1,0 +1,23 @@
+# .dockerignore — TUYỆT ĐỐI không nhúng key/dữ liệu vào image.
+# (Image chỉ chứa MÃ NGUỒN; .env + corpus đã ingest cấp lúc chạy qua secret/volume.)
+
+.env
+.env.*
+!.env.example
+
+# Dữ liệu runtime: vector store, log audit, raw crawl, feedback — mount volume, đừng đóng gói.
+data/
+
+# Môi trường / cache / VCS / checkpoint
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.checkpoints/
+.claude/
+
+# Tài liệu (không cần trong image)
+docs/
+*.md
