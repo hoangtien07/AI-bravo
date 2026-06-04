@@ -1,0 +1,26 @@
+# Caddyfile — reverse proxy cho bản dùng thử nội bộ: HTTPS tự động + Basic Auth + proxy tới UI.
+# Caddy lo TLS (Let's Encrypt nếu có domain công khai; tự ký nếu IP/LAN) + auth + websocket cho Streamlit.
+#
+# Biến (đặt trong .env, compose truyền vào service caddy):
+#   SITE_ADDRESS   = domain (vd chatai.bravo-demo.com) hoặc ":80"/"<IP>" cho nội bộ/LAN
+#   BASIC_AUTH_USER = tên đăng nhập nội bộ
+#   BASIC_AUTH_HASH = bcrypt hash mật khẩu — sinh bằng:  docker run --rm caddy caddy hash-password --plaintext '<mat-khau>'
+#
+# Chạy: docker compose --profile deploy up -d   (xem docs/deploy_vps.md)
+
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Auth tối thiểu cho dùng thử nội bộ (chặn truy cập công khai). Production: thay bằng SSO/AD.
+	basic_auth {
+		{$BASIC_AUTH_USER:bravo} {$BASIC_AUTH_HASH}
+	}
+
+	# Streamlit UI (websocket được Caddy proxy tự động).
+	reverse_proxy ui:8501
+
+	# (tuỳ chọn) mở API dưới /api nếu cần tích hợp — bỏ comment nếu dùng:
+	# handle_path /api/* {
+	#	reverse_proxy api:8000
+	# }
+}

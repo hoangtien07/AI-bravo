@@ -62,7 +62,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    profiles: ["qdrant"]
+    profiles: ["qdrant", "deploy"]      # cũng chạy trong bộ "deploy"
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -70,6 +70,41 @@ services:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # BỘ "deploy" (dùng thử nội bộ): UI Streamlit + Caddy (HTTPS + Basic Auth) + qdrant.
+  # Chạy:  docker compose --profile deploy up -d        (xem docs/deploy_vps.md)
+  # Truy cập:  https://<SITE_ADDRESS>  (đăng nhập Basic Auth).
+  # ---------------------------------------------------------------------------
+  ui:
+    build: { context: ., dockerfile: Dockerfile }
+    image: bravo-rag-api:latest
+    profiles: ["deploy"]
+    env_file: [.env]                    # VECTOR_STORE=qdrant, QDRANT_URL=http://qdrant:6333, key...
+    command: >
+      streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+      --server.headless true --browser.gatherUsageStats false
+    volumes:
+      - ./data:/app/data
+    depends_on: [qdrant]
+    restart: unless-stopped
+    # KHÔNG expose cổng ra host — chỉ Caddy truy cập nội bộ mạng compose.
+
+  caddy:
+    image: caddy:2
+    profiles: ["deploy"]
+    env_file: [.env]                    # SITE_ADDRESS, BASIC_AUTH_USER, BASIC_AUTH_HASH
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [ui]
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
   chroma_data:
+  caddy_data:
+  caddy_config:

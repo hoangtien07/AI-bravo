@@ -26,6 +26,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 import config
+import memory
 import provider
 import rag
 
@@ -42,6 +43,8 @@ class AskRequest(BaseModel):
     k: Optional[int] = Field(None, description="Số đoạn truy hồi (mặc định config.TOP_K).")
     min_sim: Optional[float] = Field(None, description="Ngưỡng cosine từ chối (mặc định config.MIN_SIM).")
     tenant_id: Optional[str] = Field(None, description="Định danh tenant (Phase-1: chỉ echo lại).")
+    history: Optional[list] = Field(None, description="Lịch sử hội thoại [{role,content}] để viết lại câu follow-up (memory đa lượt, lớp gọi).")
+    session_id: Optional[str] = Field(None, description="Định danh phiên (tuỳ chọn, cho client tự quản lý lịch sử).")
 
 
 class FeedbackRequest(BaseModel):
@@ -67,8 +70,10 @@ def healthz():
 @app.post("/ask")
 def ask(req: AskRequest):
     """Chuyển tiếp tới rag.ask() và trả NGUYÊN dict kết quả (answer/sources/hits/refused/route/max_sim).
-    Mọi rào chắn an toàn do rag.ask() đảm nhiệm — endpoint không can thiệp ngữ nghĩa."""
-    return rag.ask(req.question, k=req.k, min_sim=req.min_sim)
+    Nếu có history -> viết lại câu follow-up thành câu độc lập (memory.condense, lớp gọi, có PII pre-check)
+    rồi mới truy hồi. Mọi rào chắn an toàn vẫn do rag.ask() đảm nhiệm."""
+    q = memory.condense_question(req.history, req.question) if req.history else req.question
+    return rag.ask(q, k=req.k, min_sim=req.min_sim)
 
 
 @app.post("/feedback")

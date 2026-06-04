@@ -14,6 +14,7 @@ import streamlit as st
 
 import config
 import generate
+import memory
 import provider
 import rag
 import suggest
@@ -39,8 +40,25 @@ with st.sidebar:
     min_sim = st.slider("Ngưỡng tương đồng (chống bịa)", 0.0, 1.0, config.MIN_SIM, 0.05)
     st.caption("Dưới ngưỡng → trợ lý từ chối thay vì đoán.")
     st.divider()
-    st.caption("Mọi đầu ra của 'Soạn nháp'/'Tiện ích' là **BẢN NHÁP** — người dùng kiểm tra & "
-               "phê duyệt trước khi sử dụng.")
+    with st.expander("📊 Bảng điểm độ tin cậy"):
+        rf = config.DATA_DIR / "eval_results.json"
+        if rf.exists():
+            er = json.loads(rf.read_text(encoding="utf-8"))
+            h, a = er.get("help"), er.get("accounting")
+            if h:
+                st.markdown(f"**Hỏi-đáp help:** answer {h['answer_pass']}/{h['answer_total']} · "
+                            f"refuse {h['refuse_pass']}/{h['refuse_total']}  \n"
+                            f"<sub>kw_cov {h.get('kw_coverage')} · {h.get('ts','')[:10]}</sub>",
+                            unsafe_allow_html=True)
+            if a:
+                st.markdown(f"**Định khoản (exact-match TK):** {a['pass']}/{a['total']} "
+                            f"· cờ #7: {a.get('guardrail7_flags')}  \n"
+                            f"<sub>⚠️ ground-truth chờ mentor duyệt</sub>", unsafe_allow_html=True)
+            st.caption("Số liệu theo lần chạy gần nhất. KHÔNG hứa 0 sai — RAG pháp lý top vẫn "
+                       "ảo 17–33% (Stanford 2025). Hệ THAM CHIẾU + cảnh báo, người duyệt.")
+        else:
+            st.caption("Chạy `python eval.py` + `eval.py --accounting` để sinh bảng điểm.")
+    st.caption("Mọi đầu ra 'Soạn nháp'/'Tiện ích' là **BẢN NHÁP** — người dùng kiểm tra & duyệt.")
 
 
 def _log_feedback(question, rating):
@@ -98,13 +116,18 @@ with tab_qa:
     q = st.text_input("Câu hỏi", key="qa_q",
                       placeholder="Hỏi nghiệp vụ / định khoản / cấu hình BRAVO…")
     if st.button("Hỏi", key="qa_btn", type="primary") and q.strip():
+        prior = list(st.session_state.chat)               # lịch sử TRƯỚC câu hiện tại
         st.session_state.chat.append({"role": "user", "content": q})
         with st.chat_message("user"):
             st.markdown(q)
         with st.chat_message("assistant"):
             with st.spinner("Đang tra cứu…"):
-                r = rag.ask(q, k=k, min_sim=min_sim, chapter=chapter)
-                sug = suggest.related_questions(q, k=k, min_sim=min_sim)
+                # Memory đa lượt: viết lại câu follow-up thành câu độc lập (ở lớp gọi, giữ grounding).
+                cq = memory.condense_question(prior, q)
+                r = rag.ask(cq, k=k, min_sim=min_sim, chapter=chapter)
+                sug = suggest.related_questions(cq, k=k, min_sim=min_sim)
+            if cq.strip() != q.strip():
+                st.caption(f"🧠 hiểu câu hỏi là: *{cq}*")
             st.markdown(r["answer"])
             _trust_strip(r)                                # trust strip = rào chắn hữu hình
             if r.get("sources"):
