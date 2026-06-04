@@ -23,7 +23,115 @@ import config
 
 def Store(collection):
     backend = getattr(config, "VECTOR_STORE", "chroma").lower()
-    return _NumpyStore(collection) if backend == "numpy" else _ChromaStore(collection)
+    if backend == "numpy":
+        return _NumpyStore(collection)
+    if backend == "qdrant":
+        return _QdrantStore(collection)
+    return _ChromaStore(collection)
+
+
+# ----------------------------- Qdrant (production, Docker) -----------------------------
+# Namespace cố định để map id chuỗi BRAVO ('tenant__dX__cY') -> UUIDv5 (Qdrant chỉ nhận int/UUID).
+_QDRANT_NS = __import__("uuid").UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+
+
+class _QdrantStore:
+    def __init__(self, collection):
+        from qdrant_client import QdrantClient
+        self.collection = collection
+        self._client = QdrantClient(url=config.QDRANT_URL, api_key=config.QDRANT_API_KEY,
+                                    prefer_grpc=config.QDRANT_PREFER_GRPC)
+        self._ready = self._client.collection_exists(collection)
+
+    def _ensure(self, dim):
+        from qdrant_client import models
+        if self._client.collection_exists(self.collection):
+            self._ready = True
+            return
+        self._client.create_collection(
+            self.collection,
+            vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE))
+        # Payload index cho field lọc nóng (tenant/category/...) — rẻ, đặt sẵn cho multi-tenant.
+        for f in ("tenant_id", "data_class", "category", "file_group", "version"):
+            try:
+                self._client.create_payload_index(self.collection, field_name=f,
+                                                  field_schema=models.PayloadSchemaType.KEYWORD)
+            except Exception:
+                pass
+        self._ready = True
+
+    @staticmethod
+    def _pid(str_id):
+        import uuid
+        return str(uuid.uuid5(_QDRANT_NS, str_id))
+
+    def reset(self):
+        try:
+            self._client.delete_collection(self.collection)
+        except Exception:
+            pass
+        self._ready = False
+
+    def upsert(self, ids, embeddings, documents, metadatas):
+        from qdrant_client import models
+        emb = [list(map(float, e)) for e in embeddings]
+        if emb:
+            self._ensure(len(emb[0]))                 # DIM lấy từ vector thật (tránh hardcode sai)
+        points = []
+        for i, v, doc, meta in zip(ids, emb, documents, metadatas):
+            payload = dict(meta or {}); payload["_id"] = i; payload["document"] = doc
+            points.append(models.PointStruct(id=self._pid(i), vector=v, payload=payload))
+        for s in range(0, len(points), 256):           # batch tránh payload quá lớn
+            self._client.upsert(self.collection, points=points[s:s + 256], wait=True)
+
+    def count(self):
+        if not self._ready:
+            return 0
+        return self._client.count(self.collection, exact=True).count
+
+    def all(self):
+        if not self._ready:
+            return [], [], []
+        ids, docs, metas, offset = [], [], [], None
+        while True:
+            pts, offset = self._client.scroll(self.collection, limit=512, offset=offset,
+                                              with_payload=True, with_vectors=False)
+            for p in pts:
+                pl = p.payload or {}
+                ids.append(pl.get("_id"))
+                docs.append(pl.get("document", ""))
+                metas.append({k: v for k, v in pl.items() if k not in ("_id", "document")})
+            if offset is None:
+                break
+        return ids, docs, metas
+
+    def query(self, vector, k, where=None):
+        from qdrant_client import models
+        if not self._ready:
+            return []
+        qfilter = None
+        if where:
+            qfilter = models.Filter(must=[
+                models.FieldCondition(key=kk, match=models.MatchValue(value=vv))
+                for kk, vv in where.items()])
+        res = self._client.query_points(self.collection, query=list(map(float, vector)),
+                                        limit=k, query_filter=qfilter, with_payload=True)
+        out = []
+        for p in res.points:
+            pl = p.payload or {}
+            meta = {kk: vv for kk, vv in pl.items() if kk not in ("_id", "document")}
+            out.append((pl.get("_id"), pl.get("document", ""), meta, float(p.score)))  # COSINE: cao=tốt
+        return out
+
+    def delete(self, where):
+        """Xóa theo metadata (vd {'category': 'phong_X'}) — vòng đời tri thức."""
+        from qdrant_client import models
+        if not where:
+            return
+        self._client.delete(self.collection, points_selector=models.FilterSelector(
+            filter=models.Filter(must=[
+                models.FieldCondition(key=kk, match=models.MatchValue(value=vv))
+                for kk, vv in where.items()])))
 
 
 # ----------------------------- Chroma (mặc định) -----------------------------
@@ -49,6 +157,10 @@ class _ChromaStore:
 
     def count(self):
         return self._col.count()
+
+    def delete(self, where):
+        if where:
+            self._col.delete(where=where)
 
     def all(self):
         got = self._col.get(include=["documents", "metadatas"])
@@ -119,6 +231,27 @@ class _NumpyStore:
 
     def count(self):
         self._load(); return len(self._ids)
+
+    def delete(self, where):
+        """Xóa item có metadata khớp đủ where (equality). Trả số chunk đã xóa. Ghi lại đĩa."""
+        self._load()
+        if not where or not self._ids:
+            return 0
+        keep = [k for k, m in enumerate(self._metas)
+                if not all((m or {}).get(kk) == vv for kk, vv in where.items())]
+        removed = len(self._ids) - len(keep)
+        if not removed:
+            return 0
+        self._ids = [self._ids[k] for k in keep]
+        self._docs = [self._docs[k] for k in keep]
+        self._metas = [self._metas[k] for k in keep]
+        self._mat = self._mat[keep] if keep else np.zeros((0, 1), dtype="float32")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        np.save(self.vp, self._mat)
+        with open(self.mp, "w", encoding="utf-8") as f:
+            for i, d, m in zip(self._ids, self._docs, self._metas):
+                f.write(json.dumps({"id": i, "doc": d, "meta": m}, ensure_ascii=False) + "\n")
+        return removed
 
     def all(self):
         self._load(); return self._ids, self._docs, self._metas

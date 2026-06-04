@@ -1,0 +1,22 @@
+{
+  "help": {
+    "answer_pass": 40,
+    "answer_total": 41,
+    "refuse_pass": 15,
+    "refuse_total": 15,
+    "kw_min": 0.5,
+    "kw_coverage": 0.921,
+    "ts": "2026-06-05T01:19:51",
+    "provider": "openai/gpt-4.1-mini",
+    "store": "qdrant"
+  },
+  "accounting": {
+    "pass": 28,
+    "total": 34,
+    "guardrail7_flags": 0,
+    "note": "ground-truth chờ mentor duyệt",
+    "ts": "2026-06-05T01:21:28",
+    "provider": "openai/gpt-4.1-mini",
+    "store": "qdrant"
+  }
+}

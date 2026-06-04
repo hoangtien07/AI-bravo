@@ -147,6 +147,14 @@ def main():
         col.reset()
         print(f"[reset] đã xoá store '{config.COLLECTION}'.")
 
+    # CLI vòng đời tri thức: xóa theo category trước khi nạp (tránh dữ liệu cũ).
+    if "--delete-category" in sys.argv:
+        cat = sys.argv[sys.argv.index("--delete-category") + 1]
+        n = col.delete({"category": cat})
+        print(f"[delete-category] đã xóa {n} chunk thuộc category '{cat}'.")
+    cli_category = (sys.argv[sys.argv.index("--category") + 1]
+                    if "--category" in sys.argv else None)
+
     # Cắt chunk + dựng metadata (chưa embed)
     tenant_id, data_class = "bravo_internal", "public_help"
     ids, docs, metas = [], [], []
@@ -154,6 +162,11 @@ def main():
         path = row.get("path") or row.get("title") or ""
         chapter = (path.split(" > ")[0].strip() if path
                    else row.get("title", "").split(" > ")[0].strip())
+        dc = row.get("data_class", data_class)
+        category = cli_category or row.get("category") or (
+            "quy_dinh" if dc == "public_regulation"
+            else "minh_hoa" if "seed://" in str(row.get("url", "")) else "help")
+        file_group = row.get("file_group") or row.get("url") or row.get("title") or path or "?"
         for ci, ch in enumerate(chunk_doc(row["text"], path,
                                           config.CHUNK_MAX_CHARS, config.CHUNK_OVERLAP)):
             ids.append(f"{tenant_id}__d{di}__c{ci}")   # id ổn định -> upsert không trùng
@@ -162,7 +175,8 @@ def main():
                 "source": row.get("title") or row.get("url") or path or "?",
                 "title": row.get("title", ""), "path": path, "chapter": chapter,
                 "url": row.get("url", ""), "chunk_index": ci,
-                "tenant_id": tenant_id, "data_class": row.get("data_class", data_class),
+                "tenant_id": tenant_id, "data_class": dc,
+                "category": category, "file_group": file_group,
                 "version": row.get("version", "BRAVO 10"),
                 "embed_model": config.EMBED_MODEL,
             })

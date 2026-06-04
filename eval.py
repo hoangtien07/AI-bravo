@@ -12,14 +12,33 @@ Chạy:  python eval.py            # cần đã ingest + provider sẵn sàng (O
        python eval.py --kw 0.5   # đổi tỷ lệ keyword tối thiểu để coi là PASS nội dung (mặc định 0.5)
 Lưu ý: bộ câu cần MENTOR DUYỆT đáp án (người soạn đang học ERP).
 """
+import json
 import re
 import sys
 import unicodedata
+from datetime import datetime
 
 import yaml
 
 import config
 import rag
+
+
+def _save_results(key, payload):
+    """Lưu kết quả eval vào data/eval_results.json (benchmark.py đọc, KHÔNG gọi LLM khi demo)."""
+    f = config.DATA_DIR / "eval_results.json"
+    data = {}
+    if f.exists():
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    payload["ts"] = datetime.now().isoformat(timespec="seconds")
+    payload["provider"] = f"{config.LLM_PROVIDER}/{config.LLM_MODEL}"
+    payload["store"] = config.VECTOR_STORE
+    data[key] = payload
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # Bóc mã TK xuất hiện trong câu trả lời (ngữ cảnh Nợ/Có/TK) — dùng cho eval định khoản.
 _TK_RE = re.compile(r"(?:tk|tài khoản|nợ|có)\b[^0-9\n]{0,30}?(\d{3,5})", re.IGNORECASE)
@@ -64,6 +83,8 @@ def run_accounting():
     print(f"ĐỊNH KHOẢN: {ok}/{len(cases)} pass (exact-match TK include/exclude)")
     print(f"Rào chắn #7 gắn cờ tổng: {ung_total} mã TK ungrounded.")
     print("⚠️ Ground-truth CẦN MENTOR DUYỆT trước khi tin con số này.")
+    _save_results("accounting", {"pass": ok, "total": len(cases),
+                                 "guardrail7_flags": ung_total, "note": "ground-truth chờ mentor duyệt"})
 
 
 def _norm(s: str) -> str:
@@ -124,6 +145,10 @@ def main():
         f" · keyword coverage TB {cov_total / cov_count:.0%}" if cov_count else ""))
     print(f"refuse : {ok_ref}/{n_ref} pass (rào chắn chống bịa/PII)")
     print(f"TỔNG   : {ok_ans + ok_ref}/{n_ans + n_ref} pass")
+    _save_results("help", {"answer_pass": ok_ans, "answer_total": n_ans,
+                           "refuse_pass": ok_ref, "refuse_total": n_ref,
+                           "kw_min": kw_min,
+                           "kw_coverage": round(cov_total / cov_count, 3) if cov_count else None})
 
 
 if __name__ == "__main__":

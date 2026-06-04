@@ -25,16 +25,23 @@ KHÔNG được nói "BRAVO không có phân tích dữ liệu / BRAVO lạc h�
 
 ## 4. Kiến trúc POC + cách chạy
 
-`Câu hỏi → embed (bge-m3) → Chroma → lọc ngưỡng → LLM self-host (qwen3:8b) → trả lời + trích nguồn → audit log`. Lớp-ngoài read-only, không sửa core, chỉ một chiều ghi = nạp tài liệu offline.
+**Đã pivot cloud-first PLUGGABLE** (self-host không còn là mặc định). Luồng thực tế:
+`Câu hỏi → [rào chắn PII] → embed (provider) → store (numpy|chroma|qdrant) + hybrid BM25+vector+RRF → lọc ngưỡng cosine → LLM (provider) → trả lời + deep-link citation → [hậu kiểm số/TK] → audit log`.
+- **Provider pluggable** (`provider.py`): `openai` (mặc định) | `gemini` | `ollama` — đổi bằng `.env`.
+- **Store pluggable** (`store.py`): `numpy` (đang chạy máy này) | `chroma` | **`qdrant`** (Docker, hướng production). chromadb 1.x segfault Windows → numpy fallback.
+- **7 rào chắn** (KHÔNG phải 4): grounding · ngưỡng cosine từ chối · citation · audit · PII pre-check · anti prompt-injection · **number/TK-grounding hậu kiểm** (`rag._ungrounded_tk`).
+- **Định vị (đã chốt):** xương sống ĐO LƯỜNG độ tin cậy + TUÂN THỦ/chủ quyền dữ liệu (kiểu legal-AI) + demo rộng theo phòng ban. **KHÔNG hứa "0 sai"** (RAG pháp lý top vẫn ảo 17–33%) — đóng khung "giảm thiểu + đo được + người kế toán duyệt". BravoGen overlap không còn là lo ngại.
 
 ```bash
 py -3.12 -m venv .venv && source .venv/Scripts/activate && pip install -r requirements.txt
-ollama pull qwen3:8b && ollama pull bge-m3
-python ingest.py --seed && python eval.py        # smoke test trên seed
-streamlit run app.py                              # UI demo
+cp .env.example .env          # điền OPENAI_API_KEY (hoặc GEMINI_API_KEY); hoặc provider=ollama
+python ingest.py --reset      # nạp help + KB quy định (~1622 chunk)
+python eval.py                # help 56 câu (~55/56)
+python eval.py --accounting   # định khoản 34 case (exact-match TK; ~28/34 — CHỜ MENTOR DUYỆT)
+streamlit run app.py          # UI demo (3 tab)
 ```
 
-File chính: `config.py` (cấu hình) · `crawl_bravo_help.py` (crawl công khai) · `ingest.py` (nạp; `--seed`/`--sample`) · `rag.py` (lõi + 4 rào chắn) · `app.py` (Streamlit) · `eval.py` (đo + chứng minh từ chối) · `data/seed/` (8 tài liệu minh hoạ).
+File chính: `config.py` · `provider.py` · `store.py` (+Qdrant) · `ingest.py` (chunk + version/category metadata) · `rag.py` (lõi + 7 rào chắn + hybrid) · `generate.py` (sinh nội dung) · `app.py` · `api.py` (FastAPI) · `eval.py` (+`--accounting`) · `eval_questions.yaml` / `data/eval_accounting.yaml` · `data/regulations/` (KB TT200/TT99) · `crawl_bravo10_help.py`. Dữ liệu: 651 trang help + KB quy định.
 
 ## 5. Quy ước
 

@@ -91,27 +91,38 @@ def _id_index():
     return {i: (d, m) for i, d, m in zip(ids, docs, metas)}
 
 
+def reload_corpus():
+    """Xoá cache corpus/BM25 — BẮT BUỘC gọi sau khi upload/xóa tài liệu, nếu không
+    BM25 + tra cứu id vẫn dùng dữ liệu cũ (trích nguồn đã xóa = ảo giác về chính KB)."""
+    _corpus.cache_clear()
+    _bm25.cache_clear()
+    _id_index.cache_clear()
+
+
 def _hit(id_, sim, info):
     doc, m = info
     m = m or {}
     return {"id": id_, "text": doc, "sim": sim,
             "source": m.get("source") or m.get("title") or m.get("path") or "?",
             "title": m.get("title", ""), "path": m.get("path", ""),
-            "chapter": m.get("chapter", ""), "url": m.get("url", "")}
+            "chapter": m.get("chapter", ""), "url": m.get("url", ""),
+            "chunk_index": m.get("chunk_index"), "category": m.get("category", "")}
 
 
-def _where(tenant_id=None, data_class=None):
-    """Seam đa khách OPT-IN: build dict lọc metadata. Mặc định cả hai None -> trả None
-    (không lọc) -> hành vi y hệt cũ. Chỉ thêm key khi tham số được truyền tường minh."""
+def _where(tenant_id=None, data_class=None, chapter=None):
+    """Seam lọc metadata OPT-IN: tenant_id / data_class / chapter (phân hệ). Mặc định tất cả
+    None -> trả None (không lọc) -> hành vi y hệt cũ. Chỉ thêm key khi truyền tường minh."""
     w = {}
     if tenant_id is not None:
         w["tenant_id"] = tenant_id
     if data_class is not None:
         w["data_class"] = data_class
+    if chapter is not None:
+        w["chapter"] = chapter
     return w or None
 
 
-def retrieve(question: str, k=None, tenant_id=None, data_class=None):
+def retrieve(question: str, k=None, tenant_id=None, data_class=None, *, chapter=None):
     """Hybrid: vector (Chroma cosine) + BM25, hợp nhất bằng RRF, (tùy chọn) rerank.
     Trả về (hits[:k], max_vec_sim). max_vec_sim dùng cho rào chắn từ chối (2).
 
@@ -120,7 +131,7 @@ def retrieve(question: str, k=None, tenant_id=None, data_class=None):
     BM25 không lọc, nên dùng kèm khi đã phân tách collection theo tenant)."""
     k = k or config.TOP_K
     cand = max(k, config.RETRIEVE_CANDIDATES)
-    where = _where(tenant_id, data_class)
+    where = _where(tenant_id, data_class, chapter)
 
     qemb = provider.embed_texts([question], task="query")[0]
     res = _store().query(qemb, cand, where=where)         # [(id, doc, meta, sim)] sim giảm dần
@@ -175,14 +186,16 @@ def _build_context(hits):
 
 
 def _citations(hits):
-    """Trích nguồn deep-link, gộp theo (source,url), giữ thứ tự xuất hiện."""
+    """Trích nguồn deep-link, gộp theo (source,url,chunk_index) để KHÔNG gộp mất đoạn khác.
+    Help SPA không có 'trang' thật -> dùng 'đoạn #<chunk_index>' cho trung thực."""
     seen, out = set(), []
     for h in hits:
-        key = (h["source"], h["url"])
+        key = (h["source"], h["url"], h.get("chunk_index"))
         if key in seen:
             continue
         seen.add(key)
-        out.append({"source": h["source"], "url": h["url"], "path": h["path"]})
+        out.append({"source": h["source"], "url": h["url"], "path": h["path"],
+                    "chunk_index": h.get("chunk_index")})
     return out
 
 
@@ -195,6 +208,20 @@ _CODE_RE = re.compile(r"\d{3,5}")
 def _is_tk(code):
     """Loại nhiễu: 'Thông tư 200', năm (20xx), số tiền tròn (kết thúc '00') — KHÔNG phải mã TK."""
     return not (code.endswith("00") or re.fullmatch(r"20\d\d", code))
+
+
+# Rào chắn (7b): cờ tên VĂN BẢN PHÁP LUẬT (Thông tư/Nghị định/Điều) trích trong câu trả lời
+# nhưng KHÔNG có trong nguồn -> chống "citation-shaped hallucination" kiểu legal-AI (flag, không xóa).
+_LAW_RE = re.compile(r"(?:thông tư|nghị định|nđ|tt|điều)\s*0*(\d+)", re.IGNORECASE)
+
+
+def _ungrounded_refs(answer, hits):
+    ans = {m for m in _LAW_RE.findall(answer)}
+    if not ans:
+        return []
+    ctx = " ".join(h.get("text", "") for h in hits)
+    ctx_refs = set(_LAW_RE.findall(ctx))
+    return sorted(ans - ctx_refs)
 
 
 def _ungrounded_tk(answer, hits):
@@ -230,9 +257,9 @@ def _audit(question, sources, route, refused=False, pii=None, blocked=None, ungr
         pass
 
 
-def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None):
-    # tenant_id/data_class (tùy chọn, OPT-IN): chuyển thẳng xuống retrieve() để lọc store.
-    # Mặc định None -> không lọc -> hành vi y hệt cũ. KHÔNG đụng 6 rào chắn.
+def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None, *, chapter=None):
+    # tenant_id/data_class/chapter (tùy chọn, OPT-IN keyword-only): chuyển xuống retrieve() để lọc.
+    # Mặc định None -> không lọc -> hành vi y hệt cũ. KHÔNG đụng các rào chắn.
     min_sim = config.MIN_SIM if min_sim is None else min_sim
     route = provider.route_label()
 
@@ -244,7 +271,7 @@ def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None):
                 "refused": True, "blocked": "pii", "pii": pii, "route": route}
 
     try:
-        hits, max_vec = retrieve(question, k, tenant_id=tenant_id, data_class=data_class)
+        hits, max_vec = retrieve(question, k, tenant_id=tenant_id, data_class=data_class, chapter=chapter)
     except Exception as e:
         return {"answer": f"[Lỗi truy hồi] {e}. Đã ingest chưa? "
                           f"(collection '{config.COLLECTION}')",
@@ -271,17 +298,20 @@ def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None):
         return {"answer": config.REFUSAL, "sources": [], "hits": hits,
                 "refused": True, "route": route, "max_sim": round(max_vec, 3)}
 
-    # Rào chắn (7): hậu kiểm mã TK trong câu trả lời có grounded trong nguồn không.
+    # Rào chắn (7): hậu kiểm mã TK + tên văn bản pháp luật có grounded trong nguồn không (flag-or-omit -> FLAG).
     ungrounded = _ungrounded_tk(answer, hits)
-    if ungrounded:
-        answer += ("\n\n⚠️ Lưu ý: mã tài khoản " + ", ".join(ungrounded) +
-                   " KHÔNG tìm thấy trong tài liệu được trích — vui lòng kiểm tra lại theo "
-                   "TT200/TT99 trước khi sử dụng.")
+    ungrounded_refs = _ungrounded_refs(answer, hits)
+    flags = ungrounded + [f"Thông tư/Điều {r}" for r in ungrounded_refs]
+    if flags:
+        answer += ("\n\n⚠️ Lưu ý: " + ", ".join(flags) +
+                   " KHÔNG tìm thấy trong tài liệu được trích — cần người kiểm tra theo "
+                   "TT200/TT99 trước khi sử dụng (hệ thống tham chiếu, không thay kế toán).")
 
     cites = _citations(hits)
     _audit(question, [c["source"] for c in cites], route=route, pii=pii, ungrounded_tk=ungrounded)
     return {"answer": answer, "sources": cites, "hits": hits, "refused": False,
-            "route": route, "max_sim": round(max_vec, 3), "ungrounded_tk": ungrounded}
+            "route": route, "max_sim": round(max_vec, 3),
+            "ungrounded_tk": ungrounded, "ungrounded_refs": ungrounded_refs}
 
 
 if __name__ == "__main__":

@@ -46,8 +46,12 @@ def _slug(s: str) -> str:
 COLLECTION_BASE = "bravo_help"
 COLLECTION = f"{COLLECTION_BASE}__{_slug(EMBED_PROVIDER)}__{_slug(EMBED_MODEL)}"
 
-# Vector store: "chroma" (mặc định) | "numpy" (fallback brute-force, không cần native build)
+# Vector store: "numpy" (fallback, không cần native) | "chroma" | "qdrant" (Docker, production)
 VECTOR_STORE = os.environ.get("VECTOR_STORE", "chroma").lower()
+# Qdrant (chạy Docker local: docker run -p 6333:6333 qdrant/qdrant). API key None khi local.
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY") or None
+QDRANT_PREFER_GRPC = os.environ.get("QDRANT_PREFER_GRPC", "0") == "1"
 
 TOP_K = 4                    # số đoạn đưa vào ngữ cảnh
 RETRIEVE_CANDIDATES = 20     # số ứng viên truy hồi trước khi RRF/rerank

@@ -63,40 +63,70 @@ def _redact_notice(r):
 tab_qa, tab_draft, tab_util = st.tabs(
     ["💬 Hỏi-đáp & Tra cứu", "✍️ Soạn nháp", "🧰 Tiện ích"])
 
-# ----------------------------- TAB 1: Hỏi-đáp grounded -----------------------------
+# Phân hệ (chapter) để lọc — "demo rộng theo phòng ban" dạng nhẹ (1 selectbox, không 5 tab).
+CHAPTERS = ["Tất cả phân hệ", "Quản lý tài chính kế toán", "Quản lý mua hàng", "Quản lý bán hàng",
+            "Quản lý hàng tồn kho", "Quản lý sản xuất", "Quản lý nguồn nhân lực",
+            "Quản lý quan hệ khách hàng", "Các chức năng hệ thống", "Các quy tắc cơ bản"]
+
+
+def _trust_strip(r):
+    """Bằng chứng tin cậy hiển thị (biến rào chắn vô hình thành hữu hình — định vị đo lường)."""
+    bits = [f"độ khớp nguồn (max_sim): **{r.get('max_sim')}**",
+            f"route: **{r.get('route')}**"]
+    ut, uref = r.get("ungrounded_tk") or [], r.get("ungrounded_refs") or []
+    if ut or uref:
+        bits.append("⚠️ cờ chưa-có-trong-nguồn: " + ", ".join(ut + [f"TT/Điều {x}" for x in uref]))
+    else:
+        bits.append("✅ mọi mã TK/văn bản trích đều có trong nguồn")
+    st.caption(" · ".join(bits))
+
+
+# ----------------------------- TAB 1: Hỏi-đáp grounded (đa lượt) -----------------------------
 with tab_qa:
     st.markdown("Hỏi về **nghiệp vụ / cấu hình BRAVO** — trả lời CÓ TRÍCH NGUỒN, từ chối khi "
-                "không có trong tài liệu.")
-    q = st.text_input("Câu hỏi", key="qa_q",
-                      placeholder="VD: BRAVO 10 có những tính năng AI nào? / Khai báo khấu hao TSCĐ ở đâu?")
-    if st.button("Hỏi", key="qa_btn", type="primary") and q.strip():
-        with st.spinner("Đang tra cứu…"):
-            st.session_state["qa_r"] = rag.ask(q, k=k, min_sim=min_sim)
-            st.session_state["qa_sug"] = suggest.related_questions(q, k=k, min_sim=min_sim)
-            st.session_state["qa_q_done"] = q
+                "không có trong tài liệu. (Hệ THAM CHIẾU có cảnh báo — không thay kế toán.)")
+    chapter_sel = st.selectbox("Phân hệ (lọc nguồn)", CHAPTERS, key="qa_chapter")
+    chapter = None if chapter_sel == CHAPTERS[0] else chapter_sel
 
-    r = st.session_state.get("qa_r")
-    if r:
-        st.markdown("### Trả lời")
-        st.markdown(r["answer"])
-        if r.get("sources"):
-            st.markdown("**Nguồn:**")
-            for c in r["sources"]:
-                st.markdown(f"- [{c['source']}]({c['url']})" if c.get("url") else f"- {c['source']}")
-        sug = st.session_state.get("qa_sug") or []
-        if sug:
-            st.markdown("**Câu hỏi liên quan:**")
-            for s in sug:
-                st.markdown(f"- {s}")
-        with st.expander("Đoạn tài liệu đã truy hồi (audit)"):
-            for h in r.get("hits", []):
-                st.markdown(f"**{h['source']}** (sim={h.get('sim')}) — {h.get('url', '')}")
-                st.text(h["text"][:500])
-        c1, c2, _ = st.columns([1, 1, 8])
-        if c1.button("👍", key="qa_up"):
-            _log_feedback(st.session_state.get("qa_q_done", ""), "up"); st.toast("Cảm ơn phản hồi!")
-        if c2.button("👎", key="qa_down"):
-            _log_feedback(st.session_state.get("qa_q_done", ""), "down"); st.toast("Đã ghi nhận.")
+    if "chat" not in st.session_state:
+        st.session_state.chat = []
+    for m in st.session_state.chat:                       # lịch sử đa lượt
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
+
+    # st.chat_input KHÔNG dùng được trong st.tabs -> dùng text_input + button (đa lượt qua session).
+    q = st.text_input("Câu hỏi", key="qa_q",
+                      placeholder="Hỏi nghiệp vụ / định khoản / cấu hình BRAVO…")
+    if st.button("Hỏi", key="qa_btn", type="primary") and q.strip():
+        st.session_state.chat.append({"role": "user", "content": q})
+        with st.chat_message("user"):
+            st.markdown(q)
+        with st.chat_message("assistant"):
+            with st.spinner("Đang tra cứu…"):
+                r = rag.ask(q, k=k, min_sim=min_sim, chapter=chapter)
+                sug = suggest.related_questions(q, k=k, min_sim=min_sim)
+            st.markdown(r["answer"])
+            _trust_strip(r)                                # trust strip = rào chắn hữu hình
+            if r.get("sources"):
+                st.markdown("**Nguồn (deep-link tới help, kèm đoạn):**")
+                for c in r["sources"]:
+                    ci = c.get("chunk_index")
+                    seg = f" — đoạn #{ci}" if ci is not None else ""
+                    st.markdown(f"- [{c['source']}]({c['url']}){seg}" if c.get("url")
+                                else f"- {c['source']}{seg}")
+            if sug:
+                st.markdown("**Câu hỏi liên quan:** " + " · ".join(sug))
+            with st.expander("Đoạn tài liệu đã truy hồi (audit)"):
+                for h in r.get("hits", []):
+                    st.markdown(f"**{h['source']}** (sim={h.get('sim')}, đoạn #{h.get('chunk_index')}) "
+                                f"— {h.get('url', '')}")
+                    st.text(h["text"][:500])
+            c1, c2, _ = st.columns([1, 1, 8])
+            if c1.button("👍", key=f"up_{len(st.session_state.chat)}"):
+                _log_feedback(q, "up"); st.toast("Cảm ơn phản hồi!")
+            if c2.button("👎", key=f"down_{len(st.session_state.chat)}"):
+                _log_feedback(q, "down"); st.toast("Đã ghi nhận.")
+        st.session_state.chat.append({"role": "assistant", "content": r["answer"]})
 
 # ----------------------------- TAB 2: Soạn nháp -----------------------------
 DRAFT_TASKS = ["soan_email", "jd", "call_script", "interview", "content", "idea"]
