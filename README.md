@@ -28,7 +28,15 @@ Câu hỏi → [rào chắn PII] → embed (provider) → truy hồi HYBRID (BM2
 | `eval_judge.py` | **LLM-as-judge**: chấm `faithfulness` + `answer_relevancy` (thang 1–5) ngoài keyword |
 | `analytics.py` | **Báo cáo coverage/observability** từ `audit_log.jsonl`+`feedback.jsonl` (offline, KHÔNG gọi LLM) |
 | `suggest.py` | **Câu hỏi liên quan** (follow-up) grounded trên chunk truy hồi, tái dùng rào chắn PII/ngưỡng |
+| `generate.py` | **Trợ lý sinh nội dung** (KHÔNG dữ liệu nghiệp vụ): soạn email/JD/kịch bản gọi/phỏng vấn/nội dung/ý tưởng + dịch/soát chính tả/tóm tắt/công thức Excel. PII tự ẩn trước khi gửi cloud |
 | `Dockerfile` · `docker-compose.yml` · `docs/deploy.md` | Đóng gói + triển khai (chạy `uvicorn api:app`) |
+
+### Tính năng AN TOÀN (cloud, KHÔNG chạm dữ liệu nhạy cảm) — 3 tab trên Streamlit
+- **💬 Hỏi-đáp & Tra cứu**: RAG grounded trên help công khai (trích nguồn deep-link) + câu hỏi liên quan.
+- **✍️ Soạn nháp** (Sales/HR/Marketing): email · JD · kịch bản gọi · câu hỏi phỏng vấn · dàn ý nội dung/SEO · gợi ý ý tưởng — từ yêu cầu người dùng.
+- **🧰 Tiện ích**: dịch · soát chính tả/văn phong · tóm tắt văn bản dán · trợ lý công thức Excel.
+> Mọi đầu ra sinh nội dung là **BẢN NHÁP** để người duyệt; đầu vào chứa PII (SĐT/email/MST/CCCD) được **tự động ẩn** trước khi gửi cloud (`generate.py` tái dùng `rag._redact`). Các tính năng chạm **số liệu thật** (phân tích báo cáo, đối chiếu, dự báo) thuộc **roadmap self-host** — chưa làm vì chưa có phần cứng.
+> CLI thử nhanh: `python generate.py soan_email "nhắc công nợ…"` · `python generate.py excel "SUMIF…"` · `python generate.py dich "…"`.
 
 ---
 
