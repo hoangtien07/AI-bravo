@@ -88,6 +88,21 @@ def load_seed():
     return rows
 
 
+def load_regulations():
+    """KB quy định CÔNG KHAI (data/regulations/*.md): TT200/TT99 — hệ thống tài khoản + hạch toán.
+    Đánh dấu data_class='public_regulation' để phân biệt với help; dùng grounding cho định khoản."""
+    rows = []
+    if not config.REG_DIR.exists():
+        return rows
+    for p in sorted(config.REG_DIR.glob("*.md")):
+        text = p.read_text(encoding="utf-8")
+        title = next((ln.lstrip("# ").strip() for ln in text.splitlines()
+                      if ln.startswith("#")), p.stem)
+        rows.append({"url": f"regulation://{p.name}", "title": title, "text": text,
+                     "data_class": "public_regulation"})
+    return rows
+
+
 def main():
     if "--sample" in sys.argv:
         rows = SAMPLE
@@ -114,6 +129,14 @@ def main():
                   "hoặc `python ingest.py --seed`, hoặc `--sample`.")
             sys.exit(1)
 
+    # KB quy định CÔNG KHAI (TT200/TT99) — nạp KÈM corpus chính để định khoản được grounded
+    # (trừ chế độ --sample inline). Quy định là văn bản công khai -> an toàn dữ liệu.
+    if "--sample" not in sys.argv:
+        regs = load_regulations()
+        if regs:
+            rows = rows + regs
+            print(f"+ KB quy định: {len(regs)} tài liệu (TT200/TT99) [public_regulation]")
+
     print(f"Embedding qua: {config.EMBED_PROVIDER} / {config.EMBED_MODEL}  "
           f"-> collection '{config.COLLECTION}'")
 
@@ -138,7 +161,7 @@ def main():
                 "source": row.get("title") or row.get("url") or path or "?",
                 "title": row.get("title", ""), "path": path, "chapter": chapter,
                 "url": row.get("url", ""), "chunk_index": ci,
-                "tenant_id": tenant_id, "data_class": data_class,
+                "tenant_id": tenant_id, "data_class": row.get("data_class", data_class),
                 "embed_model": config.EMBED_MODEL,
             })
 

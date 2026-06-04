@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 SEED_DIR = DATA_DIR / "seed"          # tài liệu MINH HOẠ curated cho demo/eval
+REG_DIR = DATA_DIR / "regulations"    # KB quy định CÔNG KHAI (TT200/TT99 — hệ thống tài khoản)
 CHROMA_DIR = DATA_DIR / "chroma"
 AUDIT_LOG = DATA_DIR / "audit_log.jsonl"
 RAW_FILE = RAW_DIR / "pages.jsonl"
