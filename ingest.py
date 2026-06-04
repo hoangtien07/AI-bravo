@@ -98,8 +98,9 @@ def load_regulations():
         text = p.read_text(encoding="utf-8")
         title = next((ln.lstrip("# ").strip() for ln in text.splitlines()
                       if ln.startswith("#")), p.stem)
+        version = "TT99/2025" if ("tt99" in p.name.lower() or "99_2025" in p.name.lower()) else "TT200"
         rows.append({"url": f"regulation://{p.name}", "title": title, "text": text,
-                     "data_class": "public_regulation"})
+                     "data_class": "public_regulation", "version": version})
     return rows
 
 
@@ -162,6 +163,7 @@ def main():
                 "title": row.get("title", ""), "path": path, "chapter": chapter,
                 "url": row.get("url", ""), "chunk_index": ci,
                 "tenant_id": tenant_id, "data_class": row.get("data_class", data_class),
+                "version": row.get("version", "BRAVO 10"),
                 "embed_model": config.EMBED_MODEL,
             })
 

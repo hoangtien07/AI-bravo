@@ -157,6 +157,12 @@ def retrieve(question: str, k=None, tenant_id=None, data_class=None):
         except Exception as e:
             print(f"[rerank bỏ qua: {str(e)[:80]}]")
 
+    # Đóng rò tenant qua BM25: nhánh BM25 thêm ứng viên KHÔNG lọc -> nếu có where (đa khách)
+    # thì loại các id không khớp metadata để tránh rò chéo tenant (isolation regression-critical).
+    if where:
+        order = [i for i in order
+                 if all((info.get(i, ("", {}))[1] or {}).get(kk) == vv for kk, vv in where.items())]
+
     hits = [_hit(i, vec_sim.get(i), info.get(i, ("", {}))) for i in order[:k]]
     return hits, max_vec
 
@@ -180,7 +186,33 @@ def _citations(hits):
     return out
 
 
-def _audit(question, sources, route, refused=False, pii=None, blocked=None):
+# Rào chắn (7): hậu kiểm number/TK-grounding (deterministic) — bắt LLM "bịa" mã tài khoản
+# không có trong tài liệu trích (vd nói TK 156 cho NVL trong khi nguồn chỉ có 152).
+_ANS_TK_RE = re.compile(r"(?:tk|tài khoản|nợ|có)\b[^0-9\n]{0,30}?(\d{3,5})", re.IGNORECASE)
+_CODE_RE = re.compile(r"\d{3,5}")
+
+
+def _is_tk(code):
+    """Loại nhiễu: 'Thông tư 200', năm (20xx), số tiền tròn (kết thúc '00') — KHÔNG phải mã TK."""
+    return not (code.endswith("00") or re.fullmatch(r"20\d\d", code))
+
+
+def _ungrounded_tk(answer, hits):
+    """Mã TK xuất hiện trong câu trả lời (ngữ cảnh Nợ/Có/TK) nhưng KHÔNG có trong chunk nguồn.
+    Cho khớp cha-con (133 ~ 1331). Trả [] nếu câu trả lời không nhắc TK nào."""
+    ans_tks = {c for c in _ANS_TK_RE.findall(answer) if _is_tk(c)}
+    if not ans_tks:
+        return []
+    ctx_codes = set(_CODE_RE.findall(" ".join(h.get("text", "") for h in hits)))
+    out = []
+    for tk in ans_tks:
+        if tk in ctx_codes or any(c.startswith(tk) or tk.startswith(c) for c in ctx_codes):
+            continue
+        out.append(tk)
+    return sorted(out)
+
+
+def _audit(question, sources, route, refused=False, pii=None, blocked=None, ungrounded_tk=None):
     try:
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         with open(config.AUDIT_LOG, "a", encoding="utf-8") as f:
@@ -192,6 +224,7 @@ def _audit(question, sources, route, refused=False, pii=None, blocked=None):
                 "embed": f"{config.EMBED_PROVIDER}/{config.EMBED_MODEL}",
                 "route": route, "refused": refused,
                 "pii": pii or [], "blocked": blocked,
+                "ungrounded_tk": ungrounded_tk or [],
             }, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -238,10 +271,17 @@ def ask(question: str, k=None, min_sim=None, tenant_id=None, data_class=None):
         return {"answer": config.REFUSAL, "sources": [], "hits": hits,
                 "refused": True, "route": route, "max_sim": round(max_vec, 3)}
 
+    # Rào chắn (7): hậu kiểm mã TK trong câu trả lời có grounded trong nguồn không.
+    ungrounded = _ungrounded_tk(answer, hits)
+    if ungrounded:
+        answer += ("\n\n⚠️ Lưu ý: mã tài khoản " + ", ".join(ungrounded) +
+                   " KHÔNG tìm thấy trong tài liệu được trích — vui lòng kiểm tra lại theo "
+                   "TT200/TT99 trước khi sử dụng.")
+
     cites = _citations(hits)
-    _audit(question, [c["source"] for c in cites], route=route, pii=pii)
-    return {"answer": answer, "sources": cites, "hits": hits,
-            "refused": False, "route": route, "max_sim": round(max_vec, 3)}
+    _audit(question, [c["source"] for c in cites], route=route, pii=pii, ungrounded_tk=ungrounded)
+    return {"answer": answer, "sources": cites, "hits": hits, "refused": False,
+            "route": route, "max_sim": round(max_vec, 3), "ungrounded_tk": ungrounded}
 
 
 if __name__ == "__main__":

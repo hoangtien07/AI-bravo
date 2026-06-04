@@ -24,8 +24,10 @@ RAW_FILE = RAW_DIR / "pages.jsonl"
 # --- Nhà cung cấp model (pluggable: ollama self-host | gemini | openai cloud) ---
 # Mặc định CLOUD theo lựa chọn dự án (đã có API key); đặt LLM_PROVIDER=ollama để chạy self-host.
 # Key đọc từ biến môi trường trong provider.py (GEMINI_API_KEY / OPENAI_API_KEY).
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").lower()
-EMBED_PROVIDER = os.environ.get("EMBED_PROVIDER", "gemini").lower()
+# Default = openai cho KHỚP store đã ingest (text-embedding-3-large) -> tránh footgun đổi
+# embedder làm lệch tên collection. Đổi sang ollama/gemini qua .env khi cần.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai").lower()
+EMBED_PROVIDER = os.environ.get("EMBED_PROVIDER", "openai").lower()
 
 # Tránh hardcode model có thể bị "sunset" (vd Gemini 2.0 Flash hết hạn 01/06/2026).
 LLM_MODELS = {"ollama": "qwen3:8b", "gemini": "gemini-2.5-flash", "openai": "gpt-4.1-mini"}

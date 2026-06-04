@@ -3,7 +3,7 @@
 Nguyên tắc: trên mỗi bút toán, tổng Nợ = tổng Có.
 
 **Mua hàng nhập kho có thuế GTGT đầu vào:**
-- Nợ TK 152/156 (giá mua chưa thuế)
+- Nợ TK 152 nếu mua nguyên vật liệu (hoặc TK 156 nếu mua hàng hoá) — giá mua chưa thuế
 - Nợ TK 1331 (thuế GTGT được khấu trừ)
 - Có TK 331/111/112 (tổng giá thanh toán)
 

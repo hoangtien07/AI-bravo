@@ -1,0 +1,295 @@
+# Bộ đánh giá ĐỘ CHÍNH XÁC ĐỊNH KHOẢN — chatbot kế toán BRAVO
+# Chuẩn: Thông tư 200/2014/TT-BTC. Giả định chung: doanh nghiệp kê khai thường xuyên hàng tồn kho,
+#         nộp thuế GTGT theo phương pháp khấu trừ.
+# Tham chiếu mã TK: data/regulations/tt200_he_thong_tai_khoan.md
+#
+# ⚠️ LƯU Ý CHUẨN MỰC: Từ 01/01/2026 Thông tư 99/2025/TT-BTC THAY THẾ TT200. Bộ case này áp dụng
+#    cho kỳ kế toán còn theo TT200 — phải nêu rõ chuẩn áp dụng theo kỳ.
+#
+# ⚠️ MỌI case gắn note "[CẦN MENTOR DUYỆT]": người soạn đang học ERP/kế toán. Đáp án bám TT200 +
+#    file hệ thống tài khoản đính kèm, KHÔNG bịa; nhưng kỹ sư/kế toán BRAVO phải xác nhận trước khi
+#    dùng chính thức (đặc biệt các điểm cấp tài khoản con và phân bổ chi phí mua).
+#
+# Quy ước trường:
+#   must_include_tk    : mã TK BẮT BUỘC có trong đáp án đúng (ghi mã cấp 1 để khớp linh hoạt,
+#                        ví dụ "133" khớp cả 1331/1332; "333" khớp cả 3331/33311).
+#   must_not_include_tk: mã TK SAI thường bị nhầm — đáp án đúng KHÔNG được chứa.
+#   chuan              : chuẩn mực áp dụng.
+#   note               : trạng thái duyệt.
+# Đơn vị tính: các case từ bài tập (bt_1..bt_7) dùng ĐVT 1000đ; các case minh hoạ khác dùng đơn vị đồng.
+
+cases:
+
+  # ============================================================
+  # PHẦN A — 7 NGHIỆP VỤ BÀI TẬP (nguyên văn, ĐVT 1000đ)
+  # ============================================================
+
+  - id: bt_1_mua_nvl_chinh_chua_tra
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Mua nguyên vật liệu chính nhập kho, chưa trả tiền công ty X, giá đã gồm thuế GTGT 10% = 440.000."
+    must_include_tk: ["152", "133", "331"]
+    must_not_include_tk: ["156", "611", "153", "627"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Giá chưa thuế 400.000, thuế GTGT đầu vào 40.000 (133/1331), tổng phải trả 331 = 440.000."
+
+  - id: bt_2_chi_phi_thu_mua_tien_mat
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Chi phí thu mua lô hàng nguyên vật liệu trên, trả bằng tiền mặt 22.000 (đã gồm thuế GTGT 10%)."
+    must_include_tk: ["152", "133", "111"]
+    must_not_include_tk: ["627", "641", "642", "156"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Chi phí thu mua (vận chuyển/bốc xếp) tính VÀO giá gốc NVL: Nợ 152 = 20.000, Nợ 133 = 2.000, Có 111 = 22.000. KHÔNG đưa vào 627/641/642."
+
+  - id: bt_3_tam_ung_tien_mat_mua_nvl
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Xuất tiền mặt tạm ứng cho cán bộ đi mua nguyên vật liệu 3.000."
+    must_include_tk: ["141", "111"]
+    must_not_include_tk: ["152", "133", "334"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Mới tạm ứng, chưa có chứng từ mua: Nợ 141 / Có 111 = 3.000. Chưa ghi 152/133 vì NVL chưa nhập kho."
+
+  - id: bt_4_ban_hang_tien_mat
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Bán hàng thu tiền mặt 550.000, trong đó thuế GTGT 50.000."
+    must_include_tk: ["111", "511", "333"]
+    must_not_include_tk: ["131", "515", "711", "133"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Bút toán doanh thu: Nợ 111 = 550.000, Có 511 = 500.000, Có 3331/33311 = 50.000. Đề KHÔNG cho giá vốn nên không định khoản 632 (nếu hệ thống có giá vốn thì bổ sung Nợ 632/Có 155,156)."
+
+  - id: bt_5_rut_tgnh_nhap_quy
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Rút tiền gửi ngân hàng nhập quỹ tiền mặt 250.000."
+    must_include_tk: ["111", "112"]
+    must_not_include_tk: ["113", "131", "141"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 111 / Có 112 = 250.000. Đây là chuyển nội bộ tiền, không qua 113 vì rút và nhập quỹ trong cùng nghiệp vụ."
+
+  - id: bt_6_tam_ung_luong_tien_mat
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Chi tiền mặt tạm ứng lương cho nhân viên 20.000."
+    must_include_tk: ["334", "111"]
+    must_not_include_tk: ["141", "338", "642"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Tạm ứng/thanh toán lương cho người lao động: Nợ 334 / Có 111 = 20.000. KHÔNG dùng 141 (141 dùng cho tạm ứng công tác/mua sắm, không phải ứng lương)."
+
+  - id: bt_7_mua_tscd_nguon_xdcb
+    q: "Định khoản nghiệp vụ (ĐVT 1000đ, TT200, kê khai thường xuyên, khấu trừ): Mua 1 TSCĐ hữu hình dùng ở bộ phận sản xuất, giá mua 50.000 + thuế GTGT 10%, chưa thanh toán; chi phí vận chuyển trả tiền mặt 210 (đã gồm thuế GTGT 5%); tài sản do nguồn vốn đầu tư XDCB đài thọ."
+    must_include_tk: ["211", "133", "331", "111", "441", "411"]
+    must_not_include_tk: ["627", "642", "242", "153"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Bút toán 1 (ghi tăng TSCĐ): Nguyên giá 211 = 50.000 (giá mua) + 200 (vận chuyển chưa thuế) = 50.200; Nợ 133 = 5.000 + 10 = 5.010; Có 331 = 55.000; Có 111 = 210. Bút toán 2 (kết chuyển nguồn vốn XDCB sang vốn kinh doanh, theo nguyên giá): Nợ 441 / Có 411 = 50.200."
+
+  # ============================================================
+  # PHẦN B — MUA VẬT TƯ / HÀNG HOÁ NHẬP KHO
+  # ============================================================
+
+  - id: mua_nvl_chua_tra
+    q: "Định khoản nghiệp vụ: Thu mua nguyên vật liệu chính nhập kho, chưa trả tiền người bán; giá mua chưa thuế 400.000, thuế GTGT 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["152", "133", "331"]
+    must_not_include_tk: ["156", "611", "153"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 152 = 400.000, Nợ 133 = 40.000, Có 331 = 440.000."
+
+  - id: mua_ccdc_tra_tien_mat
+    q: "Định khoản nghiệp vụ: Mua công cụ dụng cụ nhập kho, trả ngay bằng tiền mặt; giá mua chưa thuế 10.000.000, thuế GTGT 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["153", "133", "111"]
+    must_not_include_tk: ["152", "156", "242", "627"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 153 = 10.000.000, Nợ 133 = 1.000.000, Có 111 = 11.000.000. CCDC nhập kho ghi 153 (không 242 — 242 chỉ khi xuất dùng phân bổ)."
+
+  - id: mua_hang_hoa_chua_tra
+    q: "Định khoản nghiệp vụ: Mua hàng hoá nhập kho để bán, chưa trả tiền người bán; giá mua chưa thuế 200.000.000, thuế GTGT 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["156", "133", "331"]
+    must_not_include_tk: ["152", "153", "611", "155"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Hàng hoá mua về để bán ghi 156: Nợ 156 = 200.000.000, Nợ 133 = 20.000.000, Có 331 = 220.000.000."
+
+  - id: chi_phi_thu_mua_hang_hoa_tinh_gia_goc
+    q: "Định khoản nghiệp vụ: Chi phí vận chuyển bốc dỡ của lô hàng hoá vừa mua, trả bằng tiền gửi ngân hàng; phí chưa thuế 5.000.000, thuế GTGT 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["156", "133", "112"]
+    must_not_include_tk: ["641", "642", "627", "111"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Chi phí thu mua tính VÀO giá gốc hàng hoá: Nợ 156 = 5.000.000, Nợ 133 = 500.000, Có 112 = 5.500.000. KHÔNG đưa thẳng vào 641/642."
+
+  - id: mua_nvl_dang_di_duong
+    q: "Định khoản nghiệp vụ: Cuối tháng, hàng (nguyên vật liệu) đã mua, đã nhận hoá đơn nhưng chưa về nhập kho; giá mua chưa thuế 30.000.000, thuế GTGT 10%, chưa trả tiền (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["151", "133", "331"]
+    must_not_include_tk: ["152", "156", "611"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Hàng mua đang đi đường ghi 151: Nợ 151 = 30.000.000, Nợ 133 = 3.000.000, Có 331 = 33.000.000. Khi hàng về sẽ kết chuyển Nợ 152 / Có 151."
+
+  # ============================================================
+  # PHẦN C — TẠM ỨNG
+  # ============================================================
+
+  - id: tam_ung_cong_tac
+    q: "Định khoản nghiệp vụ: Xuất quỹ tiền mặt tạm ứng cho nhân viên đi công tác 5.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["141", "111"]
+    must_not_include_tk: ["334", "642", "138"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 141 / Có 111 = 5.000.000."
+
+  - id: thanh_toan_tam_ung_mua_nvl
+    q: "Định khoản nghiệp vụ: Nhân viên thanh toán tạm ứng — đã mua nguyên vật liệu nhập kho, giá chưa thuế 4.000.000, thuế GTGT 10%; số tạm ứng trước đó 5.000.000, nhập lại quỹ tiền mặt phần thừa (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["152", "133", "111", "141"]
+    must_not_include_tk: ["331", "156", "611"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 152 = 4.000.000, Nợ 133 = 400.000, Nợ 111 = 600.000 (hoàn quỹ phần thừa), Có 141 = 5.000.000. Tổng Nợ = tổng Có = 5.000.000."
+
+  # ============================================================
+  # PHẦN D — BÁN HÀNG, THUẾ GTGT ĐẦU RA, GIÁ VỐN
+  # ============================================================
+
+  - id: ban_hang_chiu_doanh_thu
+    q: "Định khoản nghiệp vụ (chỉ phần ghi nhận doanh thu): Bán thành phẩm cho khách hàng chưa thu tiền, giá bán chưa thuế 100.000.000, thuế GTGT đầu ra 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["131", "511", "333"]
+    must_not_include_tk: ["515", "711", "632", "133"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Bút toán doanh thu: Nợ 131 = 110.000.000, Có 511 = 100.000.000, Có 3331/33311 = 10.000.000. Thuế GTGT đầu ra dùng 3331 (không 133)."
+
+  - id: ban_hang_gia_von_thanh_pham
+    q: "Định khoản nghiệp vụ (chỉ phần ghi nhận giá vốn): Khi bán thành phẩm, kết chuyển giá vốn của thành phẩm xuất kho là 70.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["632", "155"]
+    must_not_include_tk: ["511", "156", "154", "631"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 632 / Có 155 = 70.000.000 (thành phẩm dùng 155). Nếu bán hàng hoá thì Có 156."
+
+  - id: ban_hang_hoa_gia_von
+    q: "Định khoản nghiệp vụ (chỉ phần ghi nhận giá vốn): Khi bán hàng hoá, kết chuyển giá vốn hàng hoá xuất kho 80.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["632", "156"]
+    must_not_include_tk: ["155", "511", "154", "611"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 632 / Có 156 = 80.000.000 (hàng hoá dùng 156, không phải 155)."
+
+  - id: ban_hang_thu_tien_mat_full
+    q: "Định khoản nghiệp vụ: Bán hàng hoá thu ngay tiền mặt, giá bán chưa thuế 50.000.000, thuế GTGT 10%; giá vốn hàng xuất kho 35.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["111", "511", "333", "632", "156"]
+    must_not_include_tk: ["131", "515", "155", "133"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] BT1 doanh thu: Nợ 111 = 55.000.000, Có 511 = 50.000.000, Có 3331 = 5.000.000. BT2 giá vốn: Nợ 632 / Có 156 = 35.000.000."
+
+  # ============================================================
+  # PHẦN E — THU/CHI TIỀN MẶT - NGÂN HÀNG
+  # ============================================================
+
+  - id: thu_no_khach_hang_tien_mat
+    q: "Định khoản nghiệp vụ: Khách hàng trả nợ tiền hàng kỳ trước bằng tiền mặt 30.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["111", "131"]
+    must_not_include_tk: ["511", "112", "138"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 111 / Có 131 = 30.000.000."
+
+  - id: tra_no_nguoi_ban_tgnh
+    q: "Định khoản nghiệp vụ: Chuyển khoản tiền gửi ngân hàng trả nợ người bán 40.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["331", "112"]
+    must_not_include_tk: ["111", "642", "133"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 331 / Có 112 = 40.000.000."
+
+  - id: nop_tien_mat_vao_ngan_hang
+    q: "Định khoản nghiệp vụ: Nộp tiền mặt vào tài khoản tiền gửi ngân hàng 100.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["112", "111"]
+    must_not_include_tk: ["113", "131", "141"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 112 / Có 111 = 100.000.000."
+
+  # ============================================================
+  # PHẦN F — LƯƠNG (TK 334)
+  # ============================================================
+
+  - id: tinh_luong_bo_phan_ban_hang
+    q: "Định khoản nghiệp vụ: Tính tiền lương phải trả cho nhân viên bộ phận bán hàng 20.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["641", "334"]
+    must_not_include_tk: ["642", "627", "111"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 641 / Có 334 = 20.000.000 (lương nhân viên bán hàng vào 641)."
+
+  - id: tra_luong_tgnh
+    q: "Định khoản nghiệp vụ: Chi trả lương kỳ này cho người lao động bằng chuyển khoản ngân hàng 50.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["334", "112"]
+    must_not_include_tk: ["141", "642", "338"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 334 / Có 112 = 50.000.000."
+
+  # ============================================================
+  # PHẦN G — TSCĐ, KHẤU HAO, KẾT CHUYỂN NGUỒN
+  # ============================================================
+
+  - id: mua_tscd_hh_chua_tra
+    q: "Định khoản nghiệp vụ: Mua một TSCĐ hữu hình (máy móc) dùng cho sản xuất, chưa thanh toán; giá mua chưa thuế 500.000.000, thuế GTGT 10% (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["211", "133", "331"]
+    must_not_include_tk: ["153", "242", "627", "152"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 211 = 500.000.000, Nợ 133 = 50.000.000, Có 331 = 550.000.000."
+
+  - id: ket_chuyen_nguon_xdcb
+    q: "Định khoản nghiệp vụ: TSCĐ vừa mua được đầu tư bằng nguồn vốn đầu tư xây dựng cơ bản, nguyên giá 500.000.000; kết chuyển ghi tăng nguồn vốn kinh doanh (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["441", "411"]
+    must_not_include_tk: ["211", "214", "414", "421"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 441 / Có 411 = 500.000.000 (kết chuyển nguồn vốn XDCB sang vốn đầu tư của chủ sở hữu, theo nguyên giá)."
+
+  - id: trich_khau_hao_tscd
+    q: "Định khoản nghiệp vụ: Trích khấu hao TSCĐ trong kỳ: bộ phận sản xuất 6.000.000, bộ phận bán hàng 2.000.000, bộ phận quản lý doanh nghiệp 3.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["627", "641", "642", "214"]
+    must_not_include_tk: ["211", "811", "111"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 627 = 6.000.000, Nợ 641 = 2.000.000, Nợ 642 = 3.000.000, Có 214 = 11.000.000. Khấu hao ghi giảm qua 214 (hao mòn), không ghi thẳng vào 211."
+
+  # ============================================================
+  # PHẦN H — CHÊNH LỆCH TỶ GIÁ CUỐI KỲ
+  # ============================================================
+
+  - id: chenh_lech_ty_gia_lai_cuoi_ky
+    q: "Định khoản nghiệp vụ: Cuối kỳ kế toán, đánh giá lại số dư tiền gửi ngân hàng bằng ngoại tệ, phát sinh LÃI chênh lệch tỷ giá 8.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["112", "413"]
+    must_not_include_tk: ["515", "635", "5156", "6356"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Đánh giá lại CUỐI KỲ ghi qua 413: Nợ 112 / Có 413 = 8.000.000. Sau đó kết chuyển 413 -> 515 (lãi). Lưu ý KHÔNG dùng mã 5156/6356 (không tồn tại). MENTOR DUYỆT KỸ: cách trình bày một bước (Có 515) hay hai bước (qua 413) tùy quy ước hệ thống."
+
+  - id: ket_chuyen_413_lai_sang_515
+    q: "Định khoản nghiệp vụ: Kết chuyển LÃI chênh lệch tỷ giá do đánh giá lại cuối kỳ vào doanh thu hoạt động tài chính, số tiền 8.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["413", "515"]
+    must_not_include_tk: ["635", "5156", "6356", "112"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Lãi tỷ giá kết chuyển vào 515 (doanh thu tài chính): Nợ 413 / Có 515 = 8.000.000. KHÔNG có tài khoản 5156."
+
+  - id: ket_chuyen_413_lo_sang_635
+    q: "Định khoản nghiệp vụ: Kết chuyển LỖ chênh lệch tỷ giá do đánh giá lại cuối kỳ vào chi phí tài chính, số tiền 5.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["635", "413"]
+    must_not_include_tk: ["515", "5156", "6356", "811"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Lỗ tỷ giá kết chuyển vào 635 (chi phí tài chính): Nợ 635 / Có 413 = 5.000.000. KHÔNG có tài khoản 6356; lỗ tỷ giá KHÔNG vào 811."
+
+  # ============================================================
+  # PHẦN I — THUẾ GTGT PHẢI NỘP, KẾT CHUYỂN XÁC ĐỊNH KQKD
+  # ============================================================
+
+  - id: ket_chuyen_thue_gtgt_khau_tru
+    q: "Định khoản nghiệp vụ: Cuối kỳ, khấu trừ thuế GTGT — số thuế GTGT đầu vào được khấu trừ với thuế GTGT đầu ra là 15.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["333", "133"]
+    must_not_include_tk: ["111", "112", "642"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Bù trừ thuế đầu ra với đầu vào: Nợ 3331 / Có 133 = 15.000.000. Phần thuế GTGT phải nộp còn lại mới nộp bằng tiền (Nợ 3331 / Có 111,112)."
+
+  - id: nop_thue_gtgt_tien_gui
+    q: "Định khoản nghiệp vụ: Nộp thuế GTGT phải nộp vào ngân sách nhà nước bằng chuyển khoản tiền gửi ngân hàng 5.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["333", "112"]
+    must_not_include_tk: ["133", "111", "642"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 3331 / Có 112 = 5.000.000."
+
+  - id: ket_chuyen_doanh_thu_911
+    q: "Định khoản nghiệp vụ: Cuối kỳ, kết chuyển doanh thu bán hàng và cung cấp dịch vụ để xác định kết quả kinh doanh, số tiền 500.000.000 (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["511", "911"]
+    must_not_include_tk: ["632", "642", "421", "515"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 511 / Có 911 = 500.000.000 (kết chuyển doanh thu thuần sang 911)."
+
+  - id: ket_chuyen_chi_phi_911
+    q: "Định khoản nghiệp vụ: Cuối kỳ, kết chuyển giá vốn hàng bán 300.000.000, chi phí bán hàng 40.000.000, chi phí quản lý doanh nghiệp 60.000.000 sang tài khoản xác định kết quả kinh doanh (TT200, kê khai thường xuyên, khấu trừ)."
+    must_include_tk: ["911", "632", "641", "642"]
+    must_not_include_tk: ["511", "421", "515", "335"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Nợ 911 = 400.000.000, Có 632 = 300.000.000, Có 641 = 40.000.000, Có 642 = 60.000.000."
+
+  - id: ket_chuyen_lai_911_sang_421
+    q: "Định khoản nghiệp vụ: Cuối kỳ, kết chuyển LÃI từ kết quả kinh doanh sang lợi nhuận sau thuế chưa phân phối, số tiền 100.000.000 (TT200, kê khai thường xuyên, khấu trừ; bỏ qua thuế TNDN)."
+    must_include_tk: ["911", "421"]
+    must_not_include_tk: ["511", "632", "642", "821"]
+    chuan: "TT200"
+    note: "[CẦN MENTOR DUYỆT] Lãi: Nợ 911 / Có 421 = 100.000.000. (Nếu lỗ thì ngược lại Nợ 421 / Có 911). Đề bỏ qua thuế TNDN."

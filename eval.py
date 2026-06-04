@@ -12,6 +12,7 @@ Chạy:  python eval.py            # cần đã ingest + provider sẵn sàng (O
        python eval.py --kw 0.5   # đổi tỷ lệ keyword tối thiểu để coi là PASS nội dung (mặc định 0.5)
 Lưu ý: bộ câu cần MENTOR DUYỆT đáp án (người soạn đang học ERP).
 """
+import re
 import sys
 import unicodedata
 
@@ -19,6 +20,50 @@ import yaml
 
 import config
 import rag
+
+# Bóc mã TK xuất hiện trong câu trả lời (ngữ cảnh Nợ/Có/TK) — dùng cho eval định khoản.
+_TK_RE = re.compile(r"(?:tk|tài khoản|nợ|có)\b[^0-9\n]{0,30}?(\d{3,5})", re.IGNORECASE)
+
+
+def _answer_tks(answer: str):
+    # Loại nhiễu: 'Thông tư 200', năm 20xx, số tròn kết thúc '00' — không phải mã TK.
+    return {c for c in _TK_RE.findall(answer or "")
+            if not (c.endswith("00") or re.fullmatch(r"20\d\d", c))}
+
+
+def _has(codes, req):
+    """req thoả nếu có mã khớp cha-con (req '133' khớp 133 hoặc 1331)."""
+    return any(c == req or c.startswith(req) or req.startswith(c) for c in codes)
+
+
+def run_accounting():
+    """Eval ĐỊNH KHOẢN: chấm exact-match mã TK (must_include/must_not_include). Ground-truth
+    do agent soạn + CẦN MENTOR DUYỆT. Báo cả cờ rào chắn #7 (ungrounded TK)."""
+    data = yaml.safe_load(open("data/eval_accounting.yaml", encoding="utf-8"))
+    cases = data["cases"] if isinstance(data, dict) else data
+    print(f"EVAL ĐỊNH KHOẢN · {config.LLM_PROVIDER}/{config.LLM_MODEL} · {len(cases)} case\n")
+    ok = ung_total = 0
+    for c in cases:
+        r = rag.ask(c["q"])
+        codes = _answer_tks(r.get("answer", ""))
+        miss = [t for t in c.get("must_include_tk", []) if not _has(codes, t)]
+        bad = [t for t in c.get("must_not_include_tk", [])
+               if any(x == t or x.startswith(t) for x in codes)]
+        ok_case = (not r.get("refused")) and (not miss) and (not bad)
+        ok += int(ok_case)
+        ung = r.get("ungrounded_tk") or []
+        ung_total += len(ung)
+        print(f"[{'PASS' if ok_case else 'FAIL'}] {str(c.get('id',''))[:30]:30} TK={sorted(codes)}")
+        if not ok_case:
+            if r.get("refused"): print("        -> bị TỪ CHỐI")
+            if miss: print(f"        -> THIẾU TK bắt buộc: {miss}")
+            if bad:  print(f"        -> CÓ TK SAI (cấm): {bad}")
+        if ung:
+            print(f"        -> [rào chắn #7] mã TK không có trong nguồn: {ung}")
+    print(f"\n================ KẾT QUẢ ĐỊNH KHOẢN ================")
+    print(f"ĐỊNH KHOẢN: {ok}/{len(cases)} pass (exact-match TK include/exclude)")
+    print(f"Rào chắn #7 gắn cờ tổng: {ung_total} mã TK ungrounded.")
+    print("⚠️ Ground-truth CẦN MENTOR DUYỆT trước khi tin con số này.")
 
 
 def _norm(s: str) -> str:
@@ -34,6 +79,9 @@ def _kw_coverage(answer: str, keywords):
 
 
 def main():
+    if "--accounting" in sys.argv:
+        run_accounting()
+        return
     kw_min = 0.5
     if "--kw" in sys.argv:
         kw_min = float(sys.argv[sys.argv.index("--kw") + 1])

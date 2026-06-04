@@ -1,8 +1,10 @@
-# Trợ lý nghiệp vụ BRAVO — ChatAI RAG (cloud-first, pluggable)
+# ChatAI BRAVO — RAG nghiệp vụ có dẫn chứng + lớp ĐO LƯỜNG độ tin cậy & TUÂN THỦ dữ liệu
 
-Hỏi-đáp tiếng Việt trên **tài liệu help BRAVO công khai**, **có trích nguồn (deep-link)**, **đổi nhà cung cấp LLM bằng config** (OpenAI / Gemini cloud · Ollama self-host). Hướng tới sản phẩm dịch vụ chatAI cho **nội bộ BRAVO** và **khách đăng ký** (multi-tenant — roadmap).
+Hỏi-đáp tiếng Việt trên **tài liệu help BRAVO công khai + quy định kế toán (TT200/TT99)**, **có trích nguồn (deep-link)**, **đổi nhà cung cấp LLM bằng config** (OpenAI/Gemini cloud · Ollama self-host).
 
-> ⚠️ **Nhãn demo (bắt buộc nói trên slide):** tài liệu là **công khai (help.bravo.com.vn) / minh hoạ** — KHÔNG phải dữ liệu khách hàng. Khi bật cloud, **câu hỏi có thể gửi ra dịch vụ AI bên ngoài** → chỉ dùng cho dữ liệu công khai (tuân thủ Luật 91/2025: xem §6).
+**Định vị (không phải "thêm một chatbot help"):** điểm khác biệt = **kỷ luật an toàn + ĐO ĐƯỢC độ tin cậy** (7 rào chắn, eval định khoản exact-match TK, hậu kiểm số/TK chống bịa) + **chủ quyền dữ liệu** (self-host-first cho dữ liệu thật; cloud chỉ cho dữ liệu công khai).
+
+> ⚠️ **Trung thực (2 tầng):** **ĐÃ XÂY & ĐO ĐƯỢC** = RAG help/quy định grounded + 7 rào chắn + eval. **ĐỀ XUẤT/ROADMAP** (CHƯA làm) = phân tích số trên dữ liệu thật, multi-tenant, dự báo — cần **self-host + schema thật từ BRAVO** (chưa có phần cứng/schema). Demo chạy **cloud trên dữ liệu CÔNG KHAI** (tuân thủ Luật 91/2025: §6); production khách = self-host (roadmap).
 
 ---
 
@@ -82,7 +84,7 @@ streamlit run app.py                     # giao diện chat
 
 > Số liệu cập nhật theo lần chạy gần nhất; chạy lại `python eval.py` để tái tạo.
 
-## 5. Sáu rào chắn an toàn
+## 5. Bảy rào chắn an toàn
 
 1. **Grounding** — prompt buộc chỉ trả lời từ ngữ cảnh (`SYSTEM` trong `rag.py`).
 2. **Ngưỡng cosine (`MIN_SIM`)** — dưới ngưỡng → từ chối, không gọi LLM. (Có "soft refusal": LLM tự trả câu từ chối khi ngữ cảnh không đủ.)
@@ -90,6 +92,9 @@ streamlit run app.py                     # giao diện chat
 4. **Audit log** — `data/audit_log.jsonl` (câu hỏi đã redact PII, nguồn, provider/route/model).
 5. **PII pre-check** — chặn câu hỏi chứa SĐT/email/MST/CCCD trước khi gửi ra cloud *(giảm thiểu, không miễn trừ)*.
 6. **Chống prompt-injection gián tiếp** — nội dung tài liệu được đóng khung là DỮ LIỆU, không phải lệnh.
+7. **Hậu kiểm số/mã TK (number-grounding)** — `rag._ungrounded_tk`: mọi mã tài khoản trong câu trả lời phải có trong chunk nguồn; nếu không → gắn cờ cảnh báo "cần kiểm tra". Đây là thứ bắt lỗi kiểu "NVL ghi TK 156" (đúng phải 152).
+
+**Đo độ chính xác định khoản:** `python eval.py --accounting` (bộ `data/eval_accounting.yaml`, 31 case, chấm **exact-match mã TK** include/exclude + cờ rào chắn #7). ⚠️ Ground-truth **cần mentor duyệt** trước khi tin số.
 
 ## 6. Pháp lý dữ liệu (tóm tắt — xem kế hoạch chi tiết)
 
