@@ -33,6 +33,8 @@ SAMPLE = [
 
 import re
 
+_IMG_TOKEN_RE = re.compile(r"⟦IMG:([^⟧]+)⟧")   # token vị trí ảnh trong chunk (xen với text)
+
 
 def _split_paragraphs(text: str):
     """Tách theo ranh giới đoạn (dòng trống). Crawler lưu inner_text nên không còn heading
@@ -114,6 +116,11 @@ def main():
         if not rows:
             print(f"[!] Không có file .md trong {config.SEED_DIR}.")
             sys.exit(1)
+    elif "--from" in sys.argv:
+        from pathlib import Path
+        src = Path(sys.argv[sys.argv.index("--from") + 1])
+        rows = [json.loads(line) for line in open(src, encoding="utf-8") if line.strip()]
+        print(f"Nguồn: {src} ({len(rows)} trang).")
     elif config.HELP_RAW_FILE.exists():
         rows = [json.loads(line) for line in open(config.HELP_RAW_FILE, encoding="utf-8")]
         print(f"Nguồn: help BRAVO 10 {config.HELP_RAW_FILE} ({len(rows)} trang).")
@@ -167,8 +174,13 @@ def main():
             "quy_dinh" if dc == "public_regulation"
             else "minh_hoa" if "seed://" in str(row.get("url", "")) else "help")
         file_group = row.get("file_group") or row.get("url") or row.get("title") or path or "?"
+        # Map khóa ảnh -> {key,url,alt} của trang; mỗi chunk chỉ giữ ảnh có token bên trong.
+        img_map = {im["key"]: im for im in (row.get("images") or []) if im.get("key")}
         for ci, ch in enumerate(chunk_doc(row["text"], path,
                                           config.CHUNK_MAX_CHARS, config.CHUNK_OVERLAP)):
+            # Ảnh thuộc chunk = các token ⟦IMG:key⟧ xuất hiện trong chunk (giữ thứ tự, bỏ trùng).
+            keys = list(dict.fromkeys(_IMG_TOKEN_RE.findall(ch)))
+            chunk_imgs = [img_map[k] for k in keys if k in img_map]
             ids.append(f"{tenant_id}__d{di}__c{ci}")   # id ổn định -> upsert không trùng
             docs.append(ch)
             metas.append({
@@ -179,17 +191,21 @@ def main():
                 "category": category, "file_group": file_group,
                 "version": row.get("version", "BRAVO 10"),
                 "embed_model": config.EMBED_MODEL,
+                # Ảnh kèm vị trí: JSON-string để tương thích mọi store (chroma cấm list trong meta).
+                "images_json": json.dumps(chunk_imgs, ensure_ascii=False) if chunk_imgs else "",
             })
 
     if not ids:
         print("[!] Không có chunk nào để nạp.")
         sys.exit(1)
 
-    # Embed theo batch (giảm số lời gọi API/round-trip)
+    # Embed theo batch (giảm số lời gọi API/round-trip). Bỏ token ảnh khỏi text-để-embed
+    # (UUID token là nhiễu cho vector); nhưng VẪN lưu `docs` kèm token để hiển thị tái dựng.
+    embed_docs = [_IMG_TOKEN_RE.sub("", d) for d in docs]
     batch = 64
     embs = []
-    for i in range(0, len(docs), batch):
-        embs.extend(provider.embed_texts(docs[i:i + batch], task="document"))
+    for i in range(0, len(embed_docs), batch):
+        embs.extend(provider.embed_texts(embed_docs[i:i + batch], task="document"))
         print(f"  embed {min(i + batch, len(docs))}/{len(docs)} chunk…", flush=True)
 
     col.upsert(ids=ids, embeddings=embs, documents=docs, metadatas=metas)

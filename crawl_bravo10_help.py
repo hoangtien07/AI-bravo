@@ -61,16 +61,41 @@ def norm_url(url: str) -> str:
     return p.path or "/"
 
 
-def extract(page):
-    """Trả (title, text, breadcrumb) từ DOM đã render.
+# JS: thay mỗi <img> bằng 1 text-node mốc "⟦IMGi⟧" NGAY tại vị trí của nó trong DOM,
+# rồi đọc innerText -> mốc ảnh nằm ĐÚNG chỗ xen kẽ với text (giữ định dạng innerText).
+# Trả kèm manifest [{i, src, alt}] để Python gán khóa + URL tuyệt đối. (Sửa DOM live là
+# thao tác CUỐI trên trang, không ảnh hưởng discover_links/breadcrumb đã đọc trước đó.)
+_JS_EXTRACT_WITH_IMG = """
+(wrap) => {
+  const imgs = Array.from(wrap.querySelectorAll('img'));
+  const manifest = imgs.map((img, i) => ({
+    i, src: img.getAttribute('src') || img.src || '', alt: img.getAttribute('alt') || ''
+  }));
+  imgs.forEach((img, i) => {
+    const m = document.createTextNode('\\n\\u27E6IMG' + i + '\\u27E7\\n');
+    if (img.parentNode) img.parentNode.replaceChild(m, img);
+  });
+  return { text: wrap.innerText || '', manifest };
+}
+"""
+
+_IMG_MARK = re.compile(r"⟦IMG(\d+)⟧")   # mốc tạm ⟦IMGi⟧ do JS chèn
+
+
+def extract(page, url, page_key):
+    """Trả (title, text, breadcrumb, images) từ DOM đã render.
 
     Dùng container phổ quát `.article-main-wrapper` (bao cả trang "giàu" nhiều mục con
     lẫn trang "lá" một bài). Bóc breadcrumb đầu + cắt footer "Bài viết liên quan".
+    Ảnh: giữ vị trí bằng token `⟦IMG:<key>⟧` xen trong text + trả manifest [{key,url,alt}].
+    Ảnh lưu dưới dạng LINK (URL gốc help.bravo.com.vn) — không tải về.
     """
     wrap = page.query_selector(config.HELP_CONTENT_SELECTOR)
     if not wrap:
-        return "", "", []
-    full = (wrap.inner_text() or "").strip()
+        return "", "", [], []
+    res = page.eval_on_selector(config.HELP_CONTENT_SELECTOR, _JS_EXTRACT_WITH_IMG) or {}
+    full = (res.get("text") or "").strip()
+    raw_manifest = res.get("manifest") or []
     bc = page.eval_on_selector_all(
         ".breadcrumb-item", "els => els.map(e => e.innerText.trim()).filter(Boolean)") or []
     bc_set = set(bc)
@@ -99,7 +124,29 @@ def extract(page):
             text_lines.append(""); blank = True
     text = "\n".join(text_lines).strip()
     title = bc[-1] if bc else ""
-    return title, text, bc
+
+    # Gán khóa ổn định cho ảnh: <page_key>_<i> (page_key = norm_url, "/" -> "_").
+    # Chỉ giữ ảnh có token thực sự còn trong text sau khi lọc nhiễu/cắt footer.
+    slug = page_key.replace("/", "_")
+    by_i = {m["i"]: m for m in raw_manifest}
+    images, used = [], set()
+
+    def _sub(mo):
+        i = int(mo.group(1))
+        m = by_i.get(i)
+        src = (m or {}).get("src", "")
+        # Bỏ icon/chrome UI (nút "Đọc thêm", mũi tên thu gọn… = .svg ở assets/icons),
+        # chỉ giữ screenshot nội dung thật (PNG/JPG, thường ở gw-help /pub/HtmlTool).
+        if not m or not src or "assets/icons" in src or src.lower().split("?")[0].endswith(".svg"):
+            return ""                                   # ảnh không xác định/icon -> bỏ token
+        key = f"{slug}_{i}"
+        if i not in used:
+            used.add(i)
+            images.append({"key": key, "url": urljoin(url, m["src"]), "alt": m.get("alt", "")})
+        return f"⟦IMG:{key}⟧"
+
+    text = _IMG_MARK.sub(_sub, text)
+    return title, text, bc, images
 
 
 def discover_links(page, base_url):
@@ -119,11 +166,22 @@ def discover_links(page, base_url):
 def main():
     headful = "--headful" in sys.argv
     resume = "--resume" in sys.argv
+    no_discover = "--no-discover" in sys.argv        # chỉ crawl seed, không BFS (bản thử 1 chương)
     limit = config.HELP_MAX_PAGES
     if "--limit" in sys.argv:
         limit = int(sys.argv[sys.argv.index("--limit") + 1])
+    out_file = config.HELP_RAW_FILE
+    if "--out" in sys.argv:                           # ghi ra file riêng (không đụng corpus 651 trang)
+        from pathlib import Path
+        out_file = Path(sys.argv[sys.argv.index("--out") + 1])
+    seed_chapter = None
+    if "--chapter" in sys.argv:                       # lọc seed theo chương (path bắt đầu bằng chuỗi này)
+        seed_chapter = sys.argv[sys.argv.index("--chapter") + 1]
 
     seeds, path_map = load_toc()
+    if seed_chapter:
+        seeds = [h for h in seeds if path_map.get(norm_url(h), "").startswith(seed_chapter)]
+        print(f"[chapter] lọc seed theo '{seed_chapter}': còn {len(seeds)} seed.", flush=True)
     config.RAW_DIR.mkdir(parents=True, exist_ok=True)
 
     seen, results = set(), []
@@ -131,13 +189,13 @@ def main():
     # Ta vẫn ghé lại các "root" trong TOC để đọc sidebar và phát hiện link mới, nhưng
     # không ghi đè/ghi trùng trang đã có; mọi link đã thu thập đều bị loại khỏi hàng đợi.
     collected = set()
-    if resume and config.HELP_RAW_FILE.exists():
-        for line in open(config.HELP_RAW_FILE, encoding="utf-8"):
+    if resume and out_file.exists():
+        for line in open(out_file, encoding="utf-8"):
             row = json.loads(line)
             results.append(row)
             collected.add(norm_url(row["url"]))
         print(f"[resume] đã có {len(collected)} trang; chỉ crawl phần còn thiếu.", flush=True)
-    out_f = open(config.HELP_RAW_FILE, "a" if resume else "w", encoding="utf-8")
+    out_f = open(out_file, "a" if resume else "w", encoding="utf-8")
     base_count = len(results)
     limit += base_count          # khi resume: cap tính trên tổng (đã có + mới)
     queue = deque(seeds)
@@ -176,27 +234,28 @@ def main():
                 continue
 
             # Phát hiện link mới TRƯỚC khi quyết định bỏ qua (để root đã có vẫn mở rộng cây).
-            for nxt in discover_links(page, url):
-                k = norm_url(nxt)
-                if k not in seen and k not in collected:
-                    queue.append(nxt)
+            if not no_discover:
+                for nxt in discover_links(page, url):
+                    k = norm_url(nxt)
+                    if k not in seen and k not in collected:
+                        queue.append(nxt)
 
             if key in collected:        # --resume: đã có trang này -> không ghi lại
                 continue
 
-            title, text, bc = extract(page)
+            title, text, bc, images = extract(page, url, key)
             # Title ưu tiên: path từ TOC (đẹp, có cấp) > breadcrumb ghép > breadcrumb cuối.
             path = path_map.get(key, "")
             display_title = path or (" > ".join(bc[1:]) if len(bc) > 1 else title) or key
             if len(text) >= config.HELP_MIN_CHARS:
                 row = {"url": url, "title": display_title,
-                       "path": path or " > ".join(bc[1:]), "text": text}
+                       "path": path or " > ".join(bc[1:]), "text": text, "images": images}
                 results.append(row)
                 collected.add(key)
                 out_f.write(json.dumps(row, ensure_ascii=False) + "\n")
                 out_f.flush()
-                print(f"[+{len(results) - base_count:>3} | {len(results)}] {display_title[:60]}  ({len(text)} ký tự)",
-                      flush=True)
+                print(f"[+{len(results) - base_count:>3} | {len(results)}] {display_title[:55]}  "
+                      f"({len(text)} ký tự, {len(images)} ảnh)", flush=True)
             else:
                 print(f"[skip] ngắn ({len(text)} ký tự): {display_title[:55]}", flush=True)
 
@@ -205,7 +264,7 @@ def main():
         browser.close()
     out_f.close()
 
-    print(f"\nXong: {len(results)} trang -> {config.HELP_RAW_FILE}")
+    print(f"\nXong: {len(results)} trang -> {out_file}")
     if not results:
         print("[!] Không lấy được trang nào. Kiểm tra mạng / selector / TOC.")
         sys.exit(1)

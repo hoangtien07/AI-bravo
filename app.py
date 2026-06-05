@@ -8,6 +8,7 @@ Tab 3 — Tiện ích: dịch / soát chính tả / tóm tắt / công thức Ex
 Mọi tính năng chỉ dùng tài liệu CÔNG KHAI hoặc văn bản người dùng tự nhập — KHÔNG dữ liệu nghiệp vụ.
 """
 import json
+import re
 from datetime import datetime
 
 import streamlit as st
@@ -87,6 +88,28 @@ CHAPTERS = ["Tất cả phân hệ", "Quản lý tài chính kế toán", "Quả
             "Quản lý quan hệ khách hàng", "Các chức năng hệ thống", "Các quy tắc cơ bản"]
 
 
+_IMG_TOKEN = re.compile(r"⟦IMG:([^⟧]+)⟧")
+_PATH_PREFIX = re.compile(r"^\[[^\]]*\]\n")            # tiền tố breadcrumb "[path]\n" do ingest thêm
+
+
+def _render_illustrated(text, images):
+    """Tái dựng đoạn tài liệu NGUYÊN VĂN: text + ảnh xen kẽ ĐÚNG vị trí token ⟦IMG:key⟧
+    (y như bài help gốc). Ảnh render từ URL gốc (không gửi qua LLM). Đây là TẦNG HIỂN THỊ."""
+    img_by_key = {im["key"]: im for im in (images or [])}
+    text = _PATH_PREFIX.sub("", text)                 # bỏ tiền tố breadcrumb cho gọn
+    buf = []                                          # gộp các đoạn text liên tiếp trước khi in
+    for part in _IMG_TOKEN.split(text):               # split giữ lại nhóm key (vì có capture group)
+        im = img_by_key.get(part)
+        if im:                                        # `part` là 1 key ảnh
+            if buf:
+                st.markdown("".join(buf).strip()); buf = []
+            st.image(im["url"], caption=(im.get("alt") or None), use_container_width=True)
+        else:
+            buf.append(part)
+    if buf and "".join(buf).strip():
+        st.markdown("".join(buf).strip())
+
+
 def _trust_strip(r):
     """Bằng chứng tin cậy hiển thị (biến rào chắn vô hình thành hữu hình — định vị đo lường)."""
     bits = [f"độ khớp nguồn (max_sim): **{r.get('max_sim')}**",
@@ -137,6 +160,19 @@ with tab_qa:
                     seg = f" — đoạn #{ci}" if ci is not None else ""
                     st.markdown(f"- [{c['source']}]({c['url']}){seg}" if c.get("url")
                                 else f"- {c['source']}{seg}")
+            # Minh hoạ NGUYÊN VĂN từ help: ảnh hiện đúng vị trí như bài gốc (tầng hiển thị,
+            # không qua LLM). Chỉ các đoạn ĐÃ truy hồi -> bám nguồn, không bịa ảnh.
+            illustrated = [h for h in r.get("hits", []) if h.get("images")]
+            if illustrated:
+                with st.expander(f"📖 Minh hoạ từ tài liệu (có ảnh) — {len(illustrated)} đoạn", expanded=True):
+                    st.caption("Ảnh trích NGUYÊN VĂN từ help.bravo.com.vn theo đúng vị trí trong bài. "
+                               "Ảnh KHÔNG gửi qua AI — chỉ hiển thị tại máy.")
+                    for h in illustrated[:3]:
+                        seg = f" — đoạn #{h.get('chunk_index')}" if h.get("chunk_index") is not None else ""
+                        st.markdown(f"**{h['source']}**{seg}" +
+                                    (f"  ·  [mở help]({h['url']})" if h.get("url") else ""))
+                        _render_illustrated(h["text"], h["images"])
+                        st.divider()
             if sug:
                 st.markdown("**Câu hỏi liên quan:** " + " · ".join(sug))
             with st.expander("Đoạn tài liệu đã truy hồi (audit)"):

@@ -58,6 +58,15 @@ def _redact(text: str) -> str:
     return text
 
 
+_IMG_TOKEN_RE = re.compile(r"⟦IMG:([^⟧]+)⟧")   # token vị trí ảnh (xen trong text chunk)
+
+
+def _strip_img_tokens(text: str) -> str:
+    """Bỏ token ảnh khỏi text trước khi gửi LLM (rào chắn: KHÔNG gửi ảnh/khóa ảnh ra cloud,
+    tiết kiệm token). Ảnh chỉ được tái dựng ở TẦNG HIỂN THỊ từ metadata, không qua LLM."""
+    return _IMG_TOKEN_RE.sub("", text)
+
+
 def _store():
     return store.Store(config.COLLECTION)
 
@@ -99,6 +108,17 @@ def reload_corpus():
     _id_index.cache_clear()
 
 
+def _parse_images(m):
+    """Đọc danh sách ảnh (key/url/alt) từ metadata 'images_json' (string JSON). [] nếu không có."""
+    raw = (m or {}).get("images_json") or ""
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
 def _hit(id_, sim, info):
     doc, m = info
     m = m or {}
@@ -106,7 +126,8 @@ def _hit(id_, sim, info):
             "source": m.get("source") or m.get("title") or m.get("path") or "?",
             "title": m.get("title", ""), "path": m.get("path", ""),
             "chapter": m.get("chapter", ""), "url": m.get("url", ""),
-            "chunk_index": m.get("chunk_index"), "category": m.get("category", "")}
+            "chunk_index": m.get("chunk_index"), "category": m.get("category", ""),
+            "images": _parse_images(m)}
 
 
 def _where(tenant_id=None, data_class=None, chapter=None):
@@ -181,7 +202,8 @@ def retrieve(question: str, k=None, tenant_id=None, data_class=None, *, chapter=
 def _build_context(hits):
     parts = []
     for n, h in enumerate(hits, 1):
-        parts.append(f"<<TÀI LIỆU {n} | nguồn: {h['source']}>>\n{h['text']}\n<<HẾT TÀI LIỆU {n}>>")
+        body = _strip_img_tokens(h["text"])         # bỏ token ảnh -> KHÔNG gửi khóa ảnh ra LLM
+        parts.append(f"<<TÀI LIỆU {n} | nguồn: {h['source']}>>\n{body}\n<<HẾT TÀI LIỆU {n}>>")
     return "\n\n".join(parts)
 
 
