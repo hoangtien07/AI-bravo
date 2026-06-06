@@ -58,8 +58,15 @@ RETRIEVE_CANDIDATES = 20     # số ứng viên truy hồi trước khi RRF/rera
 
 # Ngưỡng cosine cho RÀO CHẮN TỪ CHỐI (guardrail 2). Mỗi embedder có thang cosine khác nhau
 # => ngưỡng riêng theo provider; [CẦN TINH CHỈNH bằng eval trên dữ liệu thật].
-MIN_SIM_BY_EMBED = {"ollama": 0.35, "gemini": 0.55, "openai": 0.30}
+# 2 tầng (đo trên corpus thật: câu tốt ~0.55–0.66, mơ hồ ~0.50, offtopic <0.40):
+#   < SCOPE_FLOOR        -> ngoài phạm vi (từ chối kiểu "chỉ hỗ trợ BRAVO")
+#   SCOPE_FLOOR..MIN_SIM -> trong miền nhưng không thấy -> gợi ý nêu rõ phân hệ
+#   >= MIN_SIM           -> trả lời.  (Ngưỡng KHÔNG tách được "sai-mà-tự-tin" ~0.50
+#   nằm kẹp giữa câu tốt -> dùng kèm INTENT GATE ở rag.py, xem _classify_intent.)
+MIN_SIM_BY_EMBED = {"ollama": 0.35, "gemini": 0.55, "openai": 0.42}
 MIN_SIM = float(os.environ.get("MIN_SIM", MIN_SIM_BY_EMBED.get(EMBED_PROVIDER, 0.35)))
+SCOPE_FLOOR_BY_EMBED = {"ollama": 0.28, "gemini": 0.45, "openai": 0.38}
+SCOPE_FLOOR = float(os.environ.get("SCOPE_FLOOR", SCOPE_FLOOR_BY_EMBED.get(EMBED_PROVIDER, 0.30)))
 
 # Hybrid retrieval (ưu tiên chất lượng): BM25 (sparse) + vector (dense) hợp nhất bằng RRF.
 HYBRID_ENABLED = os.environ.get("HYBRID_ENABLED", "1") == "1"
@@ -74,8 +81,18 @@ CHUNK_MAX_CHARS = 1200
 CHUNK_OVERLAP = 150
 CHUNK_SIZE = 1000           # (giữ cho tương thích cũ)
 
-REFUSAL = ("Em chưa tìm thấy thông tin này trong tài liệu, "
-           "anh/chị kiểm tra lại tài liệu nội bộ giúp em.")
+# Câu từ chối phân hoá theo tình huống (phản hồi khách: 1 câu "một cỡ" đọc vô duyên).
+REFUSAL = ("Em chưa tìm thấy nội dung này trong tài liệu hướng dẫn BRAVO. "
+           "Anh/chị thử nêu rõ phân hệ/chức năng hoặc từ khoá khác giúp em "
+           "(vd: công nợ, định khoản, lập hoá đơn, tồn kho…).")
+REFUSAL_SCOPE = ("Dạ em là trợ lý nghiệp vụ BRAVO, chỉ hỗ trợ tra cứu và hướng dẫn "
+                 "trong phần mềm BRAVO nên chưa hỗ trợ nội dung này được ạ.")
+GREETING_MSG = ("Dạ em chào anh/chị! Em là trợ lý nghiệp vụ BRAVO, hỗ trợ tra cứu hướng dẫn "
+                "và nghiệp vụ trong phần mềm. Anh/chị đang cần hỏi về phân hệ nào ạ — "
+                "bán hàng, mua hàng, kho, công nợ, kế toán…?")
+COMPLAINT_MSG = ("Dạ để hỗ trợ đúng, anh/chị cho em biết thêm: (1) đang gặp trục trặc ở "
+                 "phân hệ/chức năng nào (vd: bán hàng, nhập chứng từ, in báo cáo…)? "
+                 "(2) thông báo lỗi hiện trên màn hình là gì ạ? Em sẽ tra đúng phần hướng dẫn xử lý.")
 
 # --- Crawl (CHỈ tài liệu CÔNG KHAI trên bravo.com.vn — KHÔNG đăng nhập, KHÔNG dữ liệu khách) ---
 CRAWL_DOMAIN = "www.bravo.com.vn"

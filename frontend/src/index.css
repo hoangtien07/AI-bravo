@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Token — nguồn sự thật đồng bộ DESIGN.md mục 1–2. Mã hex [cần verify] với brand guide BRAVO. */
+:root {
+  --brand-700: #0b4f8a;
+  --brand-600: #1565c0;
+  --brand-500: #1e78d2;
+  --brand-50: #eaf2fb;
+  --ink-900: #0f172a;
+  --ink-600: #475569;
+  --ink-400: #94a3b8;
+  --line: #e2e8f0;
+  --surface: #ffffff;
+  --canvas: #f7f9fc;
+  --trust: #0e7c5a;
+  --warn: #b45309;
+  --danger: #b42318;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink-900);
+  font-family: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Markdown câu trả lời RAG — đọc thoải mái, không tràn (DESIGN.md mục 2). */
+.prose-answer {
+  color: var(--ink-900);
+}
+.prose-answer p {
+  margin: 0 0 0.75em;
+}
+.prose-answer p:last-child {
+  margin-bottom: 0;
+}
+.prose-answer ul,
+.prose-answer ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.4em;
+}
+.prose-answer li {
+  margin: 0.15em 0;
+}
+.prose-answer h1,
+.prose-answer h2,
+.prose-answer h3 {
+  font-weight: 600;
+  margin: 1em 0 0.4em;
+  line-height: 1.3;
+}
+.prose-answer code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.92em;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.prose-answer pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.prose-answer pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+.prose-answer table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 0.75em;
+}
+.prose-answer th,
+.prose-answer td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+}
+.prose-answer a {
+  color: var(--brand-600);
+  text-decoration: underline;
+}
+
+/* Tôn trọng prefers-reduced-motion (DESIGN.md mục 6). */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-in {
+  animation: fade-in 0.16s ease-out;
+}

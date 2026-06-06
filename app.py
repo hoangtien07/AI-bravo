@@ -144,22 +144,28 @@ with tab_qa:
         with st.chat_message("user"):
             st.markdown(q)
         with st.chat_message("assistant"):
-            with st.spinner("Đang tra cứu…"):
-                # Memory đa lượt: viết lại câu follow-up thành câu độc lập (ở lớp gọi, giữ grounding).
+            # Memory đa lượt: viết lại câu follow-up thành câu độc lập (ở lớp gọi, giữ grounding).
+            with st.spinner("Đang hiểu câu hỏi…"):
                 cq = memory.condense_question(prior, q)
-                r = rag.ask(cq, k=k, min_sim=min_sim, chapter=chapter)
-                sug = suggest.related_questions(cq, k=k, min_sim=min_sim)
             if cq.strip() != q.strip():
                 st.caption(f"🧠 hiểu câu hỏi là: *{cq}*")
-            st.markdown(r["answer"])
-            _trust_strip(r)                                # trust strip = rào chắn hữu hình
+            # STREAMING: hiện chữ chạy dần (giảm cảm giác chờ). meta nhận sources/hits/flags sau khi xong.
+            r = {}
+            answer = st.write_stream(rag.ask_stream(cq, r, k=k, min_sim=min_sim, chapter=chapter))
+            r.setdefault("answer", answer)
+            # Câu chào / ngoài phạm vi / than mơ hồ: trả nhanh, KHÔNG có nguồn -> bỏ qua phần dẫn chứng.
+            gated = r.get("blocked") or (not r.get("hits"))
+            if not gated:
+                _trust_strip(r)                            # trust strip = rào chắn hữu hình
             if r.get("sources"):
-                st.markdown("**Nguồn (deep-link tới help, kèm đoạn):**")
+                st.markdown("**Nguồn (deep-link tới help, kèm trích đoạn để đối chiếu):**")
                 for c in r["sources"]:
                     ci = c.get("chunk_index")
                     seg = f" — đoạn #{ci}" if ci is not None else ""
                     st.markdown(f"- [{c['source']}]({c['url']}){seg}" if c.get("url")
                                 else f"- {c['source']}{seg}")
+                    if c.get("snippet"):
+                        st.caption(f"  ↳ “{c['snippet']}”")
             # Minh hoạ NGUYÊN VĂN từ help: ảnh hiện đúng vị trí như bài gốc (tầng hiển thị,
             # không qua LLM). Chỉ các đoạn ĐÃ truy hồi -> bám nguồn, không bịa ảnh.
             illustrated = [h for h in r.get("hits", []) if h.get("images")]
@@ -173,9 +179,12 @@ with tab_qa:
                                     (f"  ·  [mở help]({h['url']})" if h.get("url") else ""))
                         _render_illustrated(h["text"], h["images"])
                         st.divider()
-            if sug:
-                st.markdown("**Câu hỏi liên quan:** " + " · ".join(sug))
-            with st.expander("Đoạn tài liệu đã truy hồi (audit)"):
+            if r.get("sources"):                           # chỉ gợi ý khi thật sự trả lời được
+                sug = suggest.related_questions(cq, k=k, min_sim=min_sim)
+                if sug:
+                    st.markdown("**Câu hỏi liên quan:** " + " · ".join(sug))
+            if r.get("hits"):
+              with st.expander("Đoạn tài liệu đã truy hồi (audit)"):
                 for h in r.get("hits", []):
                     st.markdown(f"**{h['source']}** (sim={h.get('sim')}, đoạn #{h.get('chunk_index')}) "
                                 f"— {h.get('url', '')}")

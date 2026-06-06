@@ -133,3 +133,48 @@ def chat(system: str, user: str) -> str:
         return out.choices[0].message.content or ""
 
     raise ValueError(f"LLM_PROVIDER không hỗ trợ: {provider}")
+
+
+def chat_stream(system: str, user: str):
+    """Như chat() nhưng STREAM từng đoạn text (yield str) -> UI hiện chữ chạy dần, giảm
+    cảm giác chờ (phản hồi khách: chậm 4–11s). Nếu provider/SDK lỗi stream -> fallback chat()
+    1 lần (yield trọn câu) để không vỡ luồng."""
+    provider = config.LLM_PROVIDER
+    model = config.LLM_MODEL
+    try:
+        if provider == "openai":
+            stream = _openai().chat.completions.create(
+                model=model, temperature=0.2, stream=True,
+                messages=[{"role": "system", "content": system},
+                          {"role": "user", "content": user}])
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            return
+
+        if provider == "gemini":
+            from google.genai import types
+            for chunk in _gemini().models.generate_content_stream(
+                    model=model, contents=user,
+                    config=types.GenerateContentConfig(system_instruction=system, temperature=0.2)):
+                if getattr(chunk, "text", None):
+                    yield chunk.text
+            return
+
+        if provider == "ollama":
+            import ollama
+            msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+            try:
+                stream = ollama.chat(model=model, messages=msgs, think=False, stream=True)
+            except TypeError:
+                stream = ollama.chat(model=model, messages=msgs, stream=True)
+            for part in stream:
+                piece = (part.get("message") or {}).get("content")
+                if piece:
+                    yield piece
+            return
+    except Exception:
+        pass
+    # Fallback: không stream được -> trả nguyên câu (vẫn chạy, chỉ mất hiệu ứng chữ chạy).
+    yield chat(system, user)
